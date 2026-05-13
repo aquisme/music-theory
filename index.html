@@ -1,0 +1,572 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+    <title>乐理大师</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+
+        html, body {
+            height: 100%;
+            font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "PingFang SC", "Helvetica Neue", sans-serif;
+            background: #f2f2f7;
+            overflow: hidden;
+            color: #1c1c1e;
+        }
+
+        .app {
+            display: flex;
+            flex-direction: column;
+            height: 100dvh;
+            max-width: 600px;
+            margin: 0 auto;
+            background: #fff;
+        }
+
+        /* ─── Header ─── */
+        .header {
+            flex-shrink: 0;
+            padding: 14px 20px 10px;
+            background: #fff;
+            border-bottom: 0.5px solid #e5e5ea;
+            text-align: center;
+        }
+        .header h1 { font-size: 17px; font-weight: 600; }
+        .stats { display: flex; justify-content: center; gap: 8px; margin-top: 5px; }
+        .badge { font-size: 12px; color: #8e8e93; background: #f2f2f7; padding: 2px 10px; border-radius: 10px; }
+        .badge.good { color: #34c759; }
+        .badge.bad  { color: #ff3b30; }
+
+        /* ─── Chat ─── */
+        .chat-area {
+            flex: 1;
+            overflow-y: auto;
+            padding: 14px 14px 6px;
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+            -webkit-overflow-scrolling: touch;
+        }
+        .message {
+            max-width: 76%;
+            padding: 9px 13px;
+            border-radius: 18px;
+            font-size: 15px;
+            line-height: 1.5;
+            word-break: break-word;
+            animation: fadeIn .2s ease;
+        }
+        @keyframes fadeIn { from{opacity:0;transform:translateY(6px)} to{opacity:1;transform:none} }
+        .message.master   { background:#f2f2f7; color:#1c1c1e; align-self:flex-start; border-bottom-left-radius:4px; }
+        .message.user     { background:#1c1c1e; color:#fff;    align-self:flex-end;   border-bottom-right-radius:4px; }
+        .message.correct  { background:#e8f8ef; color:#1a7f45; align-self:flex-start; border-bottom-left-radius:4px; font-weight:500; }
+        .message.incorrect{ background:#fff0ef; color:#c0392b; align-self:flex-start; border-bottom-left-radius:4px; font-weight:500; }
+
+        /* ─── Input Area ─── */
+        .input-area {
+            flex-shrink: 0;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            padding: 10px 14px;
+            border-top: 0.5px solid #e5e5ea;
+            background: #fff;
+            /* 底部间距由 JS 动态设置，此处仅作 fallback */
+        }
+
+        /* 麦克风开关 */
+        .mic-toggle {
+            flex-shrink: 0;
+            width: 38px; height: 38px;
+            border-radius: 50%;
+            background: #f2f2f7;
+            border: none;
+            display: flex; align-items: center; justify-content: center;
+            cursor: pointer; font-size: 17px;
+            transition: background .15s;
+        }
+        .mic-toggle.on { background: #1c1c1e; }
+        .mic-toggle.on .mic-icon path,
+        .mic-toggle.on .mic-icon rect { fill: #fff; }
+        .mic-toggle.on .mic-icon line,
+        .mic-toggle.on .mic-icon path[stroke] { stroke: #fff; }
+
+        /* 文字输入框 */
+        .text-input-wrap {
+            flex: 1;
+            height: 40px;
+            border-radius: 20px;
+            border: 1.5px solid #e5e5ea;
+            background: #f9f9f9;
+            overflow: hidden;
+            transition: border-color .2s;
+        }
+        .text-input-wrap:focus-within { border-color: #1c1c1e; background: #fff; }
+        input[type="text"] {
+            width: 100%; height: 100%;
+            padding: 0 14px;
+            border: none; background: transparent;
+            font-size: 16px; color: #1c1c1e; outline: none; font-family: inherit;
+        }
+        input[type="text"]::placeholder { color: #aeaeb2; }
+
+        /* 语音录音大按钮（语音模式下替换输入框） */
+        .voice-record-btn {
+            flex: 1;
+            height: 40px;
+            border-radius: 20px;
+            border: 1.5px solid #e5e5ea;
+            background: #f9f9f9;
+            font-size: 14px; color: #8e8e93;
+            cursor: pointer;
+            display: none; /* 默认隐藏，语音模式显示 */
+            align-items: center; justify-content: center;
+            user-select: none; -webkit-user-select: none;
+            touch-action: none;
+            transition: background .15s, color .15s, border-color .15s;
+        }
+        .voice-record-btn.recording {
+            background: #fff0ef; border-color: #ff3b30; color: #ff3b30;
+        }
+
+        /* 发送按钮 */
+        .send-btn {
+            flex-shrink: 0;
+            width: 38px; height: 38px;
+            border-radius: 50%;
+            background: #1c1c1e; color: #fff;
+            border: none; font-size: 16px;
+            display: flex; align-items: center; justify-content: center;
+            cursor: pointer; transition: opacity .15s;
+        }
+        .send-btn:active { opacity: .7; }
+
+        /* 语音模式切换显示 */
+        .app.voice-mode .text-input-wrap { display: none; }
+        .app.voice-mode .voice-record-btn { display: flex; }
+    </style>
+</head>
+<body>
+<div class="app" id="app">
+    <div class="header">
+        <h1>乐理大师</h1>
+        <div class="stats">
+            <span class="badge good">✓ <span id="sc">0</span></span>
+            <span class="badge bad">✗ <span id="si">0</span></span>
+            <span class="badge">准确率 <span id="sa">—</span></span>
+        </div>
+    </div>
+
+    <div class="chat-area" id="chatArea"></div>
+
+    <div class="input-area" id="inputArea">
+        <!-- 麦克风开关 -->
+        <button class="mic-toggle" id="micToggle" title="语音模式">
+            <svg class="mic-icon" width="18" height="18" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                <rect x="9" y="2" width="6" height="12" rx="3" fill="#1c1c1e"/>
+                <path d="M5 11a7 7 0 0 0 14 0" stroke="#1c1c1e" stroke-width="1.8" stroke-linecap="round"/>
+                <line x1="12" y1="18" x2="12" y2="22" stroke="#1c1c1e" stroke-width="1.8" stroke-linecap="round"/>
+                <line x1="9" y1="22" x2="15" y2="22" stroke="#1c1c1e" stroke-width="1.8" stroke-linecap="round"/>
+            </svg>
+        </button>
+
+        <!-- 文字输入框 -->
+        <div class="text-input-wrap">
+            <input type="text" id="userInput"
+                   placeholder="输入答案，或说「换题型」「加难」…"
+                   autocomplete="off" autocorrect="off" autocapitalize="off" />
+        </div>
+
+        <!-- 语音录音按钮（语音模式专用，替换输入框） -->
+        <button class="voice-record-btn" id="voiceRecordBtn">按住说话</button>
+
+        <!-- 发送 -->
+        <button class="send-btn" id="sendBtn">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="white">
+                <path d="M12 3 L21 20 L12 16 L3 20 Z"/>
+            </svg>
+        </button>
+    </div>
+</div>
+
+<script>
+// ═══════════════════════════════════════════
+//  底部间距自适应（tiiny广告条 + 安全区）
+// ═══════════════════════════════════════════
+function setBottomPadding() {
+    const safeBottom = parseInt(getComputedStyle(document.documentElement)
+        .getPropertyValue('--sab') || '0', 10);
+
+    // tiiny广告条约48px；桌面端不需要额外空间
+    const isMobile = /Mobi|Android|iPhone|iPad/i.test(navigator.userAgent);
+    const tinyBar = isMobile ? 52 : 0;
+    const safe    = isMobile ? (window.safeAreaBottom || 0) : 0;
+
+    document.getElementById('inputArea').style.paddingBottom =
+        (10 + tinyBar + safe) + 'px';
+}
+
+// 读取 CSS env(safe-area-inset-bottom) 的实际像素值
+const safeDiv = document.createElement('div');
+safeDiv.style.cssText = 'position:fixed;bottom:0;height:env(safe-area-inset-bottom,0px);width:0;pointer-events:none;';
+document.body.appendChild(safeDiv);
+window.addEventListener('load', () => {
+    window.safeAreaBottom = safeDiv.offsetHeight || 0;
+    document.body.removeChild(safeDiv);
+    setBottomPadding();
+});
+window.addEventListener('resize', setBottomPadding);
+
+// ═══════════════════════════════════════════
+//  乐理知识库
+// ═══════════════════════════════════════════
+const CHROMATIC = ['C','#C','D','#D','E','F','#F','G','#G','A','#A','B'];
+const SOLMIZATION_TO_NOTE = {
+    '1':'C','#1':'#C','b1':'B','2':'D','#2':'#D','b2':'#C',
+    '3':'E','#3':'F', 'b3':'#D','4':'F','#4':'#F','b4':'E',
+    '5':'G','#5':'#G','b5':'#F','6':'A','#6':'#A','b6':'#G',
+    '7':'B','#7':'C', 'b7':'#A'
+};
+const ENHARMONIC = {
+    '#C':'bD','bD':'#C','#D':'bE','bE':'#D','#F':'bG','bG':'#F',
+    '#G':'bA','bA':'#G','#A':'bB','bB':'#A'
+};
+const SCALES = {
+    '大调':[0,2,4,5,7,9,11],'自然小调':[0,2,3,5,7,8,10],
+    '和声小调':[0,2,3,5,7,8,11],'旋律小调':[0,2,3,5,7,9,11],
+    '五声音阶':[0,2,4,7,9],'多利亚调式':[0,2,3,5,7,9,10],
+    '弗里几亚调式':[0,1,3,5,7,8,10],'利底亚调式':[0,2,4,6,7,9,11],
+    '混合利底亚':[0,2,4,5,7,9,10],'洛克里亚调式':[0,1,3,5,6,8,10]
+};
+const CHORDS = {
+    '大三和弦':[0,4,7],'小三和弦':[0,3,7],'减三和弦':[0,3,6],
+    '增三和弦':[0,4,8],'挂留四和弦':[0,5,7],
+    '属七和弦':[0,4,7,10],'大七和弦':[0,4,7,11],'小七和弦':[0,3,7,10],
+    '减七和弦':[0,3,6,9],'半减七和弦':[0,3,6,10],'小大七和弦':[0,3,7,11]
+};
+const INTERVALS = {
+    0:'同度',1:'小二度',2:'大二度',3:'小三度',4:'大三度',
+    5:'纯四度',6:'增四度/减五度',7:'纯五度',8:'小六度',
+    9:'大六度',10:'小七度',11:'大七度',12:'八度'
+};
+
+// ═══════════════════════════════════════════
+//  状态
+// ═══════════════════════════════════════════
+let currentQuestion = null;
+let difficulty = 2;
+let questionType = 'all';
+let stats = JSON.parse(localStorage.getItem('musicStats')) || {correct:0,incorrect:0};
+let customQuestions = JSON.parse(localStorage.getItem('customQuestions')) || [];
+let voiceMode = false;
+
+// ═══════════════════════════════════════════
+//  辅助函数
+// ═══════════════════════════════════════════
+function getNoteIndex(n) {
+    let i = CHROMATIC.indexOf(n);
+    if (i !== -1) return i;
+    if (n.length === 2 && n[0] === 'b') {
+        const b = CHROMATIC.indexOf(n[1].toUpperCase());
+        if (b !== -1) return (b - 1 + 12) % 12;
+    }
+    return 0;
+}
+const getNoteName = i => CHROMATIC[((i%12)+12)%12];
+const transposeNote = (n,s) => getNoteName(getNoteIndex(n)+s);
+const getScaleNotes = (r,t) => SCALES[t].map(i=>transposeNote(r,i));
+const getChordNotes = (r,t) => CHORDS[t].map(i=>transposeNote(r,i));
+const randomNote = () => CHROMATIC[Math.floor(Math.random()*12)];
+const randomChoice = a => a[Math.floor(Math.random()*a.length)];
+
+function normToken(t) {
+    t = t.trim().replace(/降/g,'b').replace(/升/g,'#');
+    const sm = t.match(/^([#b]?)([1-7])$/);
+    if (sm) return SOLMIZATION_TO_NOTE[sm[1]+sm[2]] || t.toUpperCase();
+    const nm = t.match(/^([#b]?)([A-Ga-g])$/);
+    if (nm) return nm[1]+nm[2].toUpperCase();
+    return t.toUpperCase();
+}
+function normalizeAnswer(s) { return s.trim().split(/\s+/).map(normToken).join(' '); }
+function notesEqual(a,b) {
+    if (a===b) return true;
+    if (ENHARMONIC[a]===b||ENHARMONIC[b]===a) return true;
+    const an=SOLMIZATION_TO_NOTE[a]||a, bn=SOLMIZATION_TO_NOTE[b]||b;
+    return an===bn||(ENHARMONIC[an]===bn)||(ENHARMONIC[bn]===an);
+}
+function checkAnswer(raw) {
+    if (!currentQuestion) return false;
+    const u=normalizeAnswer(raw).split(' '), c=normalizeAnswer(currentQuestion.answer).split(' ');
+    if (u.length!==c.length) return false;
+    if (u.every((t,i)=>notesEqual(t,c[i]))) return true;
+    if (u.length>1) {
+        const su=[...u].sort(), sc=[...c].sort();
+        if (su.every((t,i)=>notesEqual(t,sc[i]))) return true;
+    }
+    return false;
+}
+
+// ═══════════════════════════════════════════
+//  出题
+// ═══════════════════════════════════════════
+function generateIntervalQuestion() {
+    const note=randomNote(), dir=Math.random()>.5?'上行':'下行';
+    const maxI=Math.min(12,2+difficulty*2), semi=Math.floor(Math.random()*maxI)+1;
+    const answer=dir==='上行'?transposeNote(note,semi):transposeNote(note,-semi);
+    return {question:`${note}${dir}${INTERVALS[semi]||semi+'个半音'}是什么音？`,answer};
+}
+function generateScaleQuestion() {
+    const all=Object.keys(SCALES);
+    const st=difficulty<=2?'大调':difficulty<=3?randomChoice(['大调','自然小调','和声小调','五声音阶']):randomChoice(all);
+    const root=randomNote();
+    if (Math.random()>.5) {
+        const deg=Math.floor(Math.random()*SCALES[st].length)+1;
+        return {question:`${root}${st}第${deg}级音？`,answer:getScaleNotes(root,st)[deg-1]};
+    }
+    return {question:`${root}${st}的组成音？`,answer:getScaleNotes(root,st).join(' ')};
+}
+function generateChordQuestion() {
+    const all=Object.keys(CHORDS);
+    const ct=difficulty<=2?randomChoice(['大三和弦','小三和弦']):difficulty<=3?randomChoice(['大三和弦','小三和弦','减三和弦','增三和弦','属七和弦']):randomChoice(all);
+    const root=randomNote();
+    return {question:`${root}${ct}的组成音？`,answer:getChordNotes(root,ct).join(' ')};
+}
+function generateQuestion() {
+    const types=['interval','scale','chord'];
+    if (customQuestions.length>0) types.push('custom');
+    const type=questionType==='all'?randomChoice(types):questionType;
+    let q;
+    if (type==='interval') q=generateIntervalQuestion();
+    else if (type==='scale') q=generateScaleQuestion();
+    else if (type==='chord') q=generateChordQuestion();
+    else { const c=randomChoice(customQuestions); q={question:c.question,answer:c.answer}; }
+    currentQuestion=q; return q.question;
+}
+
+// ═══════════════════════════════════════════
+//  意图识别
+// ═══════════════════════════════════════════
+function detectIntent(t) {
+    if (/^(简单|容易|easy)$/i.test(t))  return {type:'difficulty',value:1};
+    if (/较易|稍简单/.test(t))           return {type:'difficulty',value:2};
+    if (/中等|普通|normal/i.test(t))     return {type:'difficulty',value:3};
+    if (/较难|稍难/.test(t))            return {type:'difficulty',value:4};
+    if (/^(困难|hard)$/i.test(t))        return {type:'difficulty',value:5};
+    const dm=t.match(/难度\s*([1-5])/);  if (dm) return {type:'difficulty',value:+dm[1]};
+    if (/加[大难]|升难|更难|再难/.test(t)) return {type:'difficulty',value:Math.min(5,difficulty+1)};
+    if (/降[低难]|更简单|再简单|简单一点/.test(t)) return {type:'difficulty',value:Math.max(1,difficulty-1)};
+    if (/音程/.test(t))   return {type:'qtype',value:'interval'};
+    if (/音阶|调式/.test(t)) return {type:'qtype',value:'scale'};
+    if (/和弦/.test(t))   return {type:'qtype',value:'chord'};
+    if (/自定义/.test(t)) return {type:'qtype',value:'custom'};
+    if (/全部|混合|随机|all/i.test(t)) return {type:'qtype',value:'all'};
+    if (/换[一道题]?|跳过|下一题|再来|skip|next/i.test(t)) return {type:'next'};
+    if (/统计|正确率|成绩/.test(t))   return {type:'stats'};
+    if (/添加题目|新增题目/.test(t))   return {type:'addCustom'};
+    if (/重置|清空统计/.test(t))       return {type:'reset'};
+    if (/帮助|怎么用|help/i.test(t))   return {type:'help'};
+    return null;
+}
+function handleIntent(intent) {
+    const ln=['简单','较易','中等','较难','困难'];
+    const tn={all:'全部',interval:'音程',scale:'音阶',chord:'和弦',custom:'自定义'};
+    switch(intent.type) {
+        case 'difficulty':
+            difficulty=intent.value;
+            addMsg(`难度→${ln[difficulty-1]}，继续：`,'master');
+            setTimeout(askNew,400); return true;
+        case 'qtype':
+            questionType=intent.value;
+            addMsg(`题型→${tn[questionType]}，开始：`,'master');
+            setTimeout(askNew,400); return true;
+        case 'next':
+            currentQuestion=null; askNew(); return true;
+        case 'stats': {
+            const tot=stats.correct+stats.incorrect;
+            addMsg(`共${tot}题，正确${stats.correct}，正确率${tot>0?Math.round(stats.correct/tot*100):0}%`,'master');
+            return true;
+        }
+        case 'addCustom':
+            setTimeout(()=>{
+                const q=prompt('题目内容：'); if(!q)return;
+                const a=prompt('正确答案：'); if(!a)return;
+                customQuestions.push({question:q,answer:a});
+                localStorage.setItem('customQuestions',JSON.stringify(customQuestions));
+                addMsg('已添加','master');
+            },100); return true;
+        case 'reset':
+            if(confirm('重置统计？')){ stats={correct:0,incorrect:0}; updateStats(); addMsg('已重置','master'); }
+            return true;
+        case 'help':
+            addMsg('说：「换音阶题」「只出和弦」「简单一点」「加难」「难度4」「统计」「换一题」\n答案格式：C  #F  bA  或  1  #4  b6','master');
+            return true;
+    }
+    return false;
+}
+
+// ═══════════════════════════════════════════
+//  UI
+// ═══════════════════════════════════════════
+function addMsg(text, type='master') {
+    const area=document.getElementById('chatArea');
+    const d=document.createElement('div');
+    d.className=`message ${type}`; d.textContent=text;
+    area.appendChild(d); area.scrollTop=area.scrollHeight;
+}
+function updateStats() {
+    document.getElementById('sc').textContent=stats.correct;
+    document.getElementById('si').textContent=stats.incorrect;
+    const tot=stats.correct+stats.incorrect;
+    document.getElementById('sa').textContent=tot>0?Math.round(stats.correct/tot*100)+'%':'—';
+    localStorage.setItem('musicStats',JSON.stringify(stats));
+}
+function askNew() { addMsg(generateQuestion(),'master'); }
+
+function processInput(text) {
+    text=text.trim(); if(!text)return;
+    addMsg(text,'user');
+    const intent=detectIntent(text);
+    if(intent){ handleIntent(intent); return; }
+    if(!currentQuestion){ askNew(); return; }
+    if(checkAnswer(text)){
+        stats.correct++; addMsg('✓ 正确！','correct');
+    } else {
+        stats.incorrect++; addMsg(`✗ 错误，答案：${currentQuestion.answer}`,'incorrect');
+    }
+    updateStats();
+    setTimeout(askNew,900);
+}
+
+// ═══════════════════════════════════════════
+//  文字输入
+// ═══════════════════════════════════════════
+document.getElementById('sendBtn').addEventListener('click',()=>{
+    if(voiceMode) return;
+    const inp=document.getElementById('userInput');
+    processInput(inp.value); inp.value='';
+});
+document.getElementById('userInput').addEventListener('keydown',e=>{
+    if(e.key==='Enter'&&!e.shiftKey){
+        e.preventDefault(); processInput(e.target.value); e.target.value='';
+    }
+});
+
+// ═══════════════════════════════════════════
+//  麦克风开关
+// ═══════════════════════════════════════════
+document.getElementById('micToggle').addEventListener('click',()=>{
+    voiceMode=!voiceMode;
+    document.getElementById('micToggle').classList.toggle('on',voiceMode);
+    document.getElementById('app').classList.toggle('voice-mode',voiceMode);
+});
+
+// ═══════════════════════════════════════════
+//  语音录音（独立按钮，不含任何 input）
+// ═══════════════════════════════════════════
+let recognition = null;
+let isRecording = false;
+let gotResult = false; // 标记是否已收到识别结果
+
+function resetRecBtn() {
+    isRecording = false;
+    const btn = document.getElementById('voiceRecordBtn');
+    btn.classList.remove('recording');
+    btn.textContent = '按住说话';
+}
+
+function buildSR() {
+    const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+    if (!SR) return null;
+    const r = new SR();
+    r.lang = 'zh-CN';
+    r.continuous = false;
+    r.interimResults = false;
+
+    r.onresult = e => {
+        gotResult = true;
+        const text = e.results[0][0].transcript;
+        resetRecBtn();
+        if (text.trim()) processInput(text);
+    };
+
+    r.onerror = e => {
+        // not-allowed = 没有麦克风权限
+        if (e.error === 'not-allowed') {
+            addMsg('⚠️ 麦克风权限被拒绝，请在浏览器设置中允许使用麦克风', 'master');
+        } else if (e.error === 'no-speech') {
+            // 没有说话，静默结束，正常重置
+        } else {
+            addMsg(`语音识别出错：${e.error}`, 'master');
+        }
+        resetRecBtn();
+    };
+
+    // onend 在 onresult 之后也会触发，只在没有结果时重置
+    r.onend = () => {
+        if (!gotResult) resetRecBtn();
+    };
+
+    return r;
+}
+
+function startRec() {
+    if (isRecording) return;
+    recognition = buildSR();
+    if (!recognition) {
+        addMsg('⚠️ 此浏览器不支持语音识别，建议使用 Safari（iOS）或 Chrome（Android）', 'master');
+        return;
+    }
+    gotResult = false;
+    try {
+        recognition.start();
+        isRecording = true;
+        const btn = document.getElementById('voiceRecordBtn');
+        btn.classList.add('recording');
+        btn.textContent = '🎙 松手停止';
+    } catch(e) {
+        addMsg('启动录音失败，请重试', 'master');
+        resetRecBtn();
+    }
+}
+
+function stopRec() {
+    if (!isRecording) return;
+    // 调用 stop() 后会触发 onend，onend 里判断 gotResult 决定是否重置
+    try { recognition && recognition.stop(); } catch(e) {}
+}
+
+const vrBtn = document.getElementById('voiceRecordBtn');
+
+// ── 触屏 ──
+vrBtn.addEventListener('touchstart', e => {
+    e.preventDefault();
+    startRec();
+}, { passive: false });
+
+vrBtn.addEventListener('touchend', e => {
+    e.preventDefault();
+    stopRec();
+}, { passive: false });
+
+vrBtn.addEventListener('touchcancel', e => {
+    e.preventDefault();
+    stopRec();
+}, { passive: false });
+
+// ── 鼠标（桌面） ──
+vrBtn.addEventListener('mousedown', e => { e.preventDefault(); startRec(); });
+vrBtn.addEventListener('mouseup',   () => stopRec());
+vrBtn.addEventListener('mouseleave',() => { if (isRecording) stopRec(); });
+
+// ═══════════════════════════════════════════
+//  初始化
+// ═══════════════════════════════════════════
+window.addEventListener('load', () => {
+    updateStats();
+    addMsg('准备好了，开始：','master');
+    setTimeout(askNew, 300);
+});
+</script>
+</body>
+</html>
