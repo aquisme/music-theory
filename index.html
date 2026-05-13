@@ -280,6 +280,7 @@ const INTERVALS = {
 //  状态
 // ═══════════════════════════════════════════
 let currentQuestion = null;
+let lastQuestionText = null; // 避免重复出题
 let difficulty = 2;
 let questionType = 'all';
 let lockedScale = null;  // {root:'C', type:'大调'} 锁定音阶
@@ -370,12 +371,12 @@ function generateIntervalQuestion() {
 }
 function generateScaleQuestion() {
     const all=Object.keys(SCALES);
-    // 如果锁定了音阶，始终用锁定的根音和类型
     const root = lockedScale ? lockedScale.root : randomNote();
     const st   = lockedScale ? lockedScale.type
                 : difficulty<=2?'大调':difficulty<=3?randomChoice(['大调','自然小调','和声小调','五声音阶']):randomChoice(all);
-    const deg=Math.floor(Math.random()*SCALES[st].length)+1;
-    if (Math.random()>.5) {
+    // 锁定音阶时只出分级题（避免"组成音"重复），未锁定时随机
+    if (lockedScale || Math.random() > 0.5) {
+        const deg=Math.floor(Math.random()*SCALES[st].length)+1;
         return {question:`${root}${st}第${deg}级音？`,answer:getScaleNotes(root,st)[deg-1]};
     }
     return {question:`${root}${st}的组成音？`,answer:getScaleNotes(root,st).join(' ')};
@@ -392,11 +393,15 @@ function generateQuestion() {
     const types=['interval','scale','chord'];
     if (customQuestions.length>0) types.push('custom');
     const type=questionType==='all'?randomChoice(types):questionType;
-    let q;
-    if (type==='interval') q=generateIntervalQuestion();
-    else if (type==='scale') q=generateScaleQuestion();
-    else if (type==='chord') q=generateChordQuestion();
-    else { const c=randomChoice(customQuestions); q={question:c.question,answer:c.answer}; }
+    let q, attempts = 0;
+    do {
+        if (type==='interval') q=generateIntervalQuestion();
+        else if (type==='scale') q=generateScaleQuestion();
+        else if (type==='chord') q=generateChordQuestion();
+        else { const c=randomChoice(customQuestions); q={question:c.question,answer:c.answer}; }
+        attempts++;
+    } while (q.question === lastQuestionText && attempts < 5);
+    lastQuestionText = q.question;
     currentQuestion=q; return q.question;
 }
 
