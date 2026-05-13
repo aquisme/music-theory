@@ -228,10 +228,28 @@ const SOLMIZATION_TO_NOTE = {
     '5':'G','#5':'#G','b5':'#F','6':'A','#6':'#A','b6':'#G',
     '7':'B','#7':'C', 'b7':'#A'
 };
-const ENHARMONIC = {
+// 等音映射（包含重升等情况）
+const ENHARMONIC_FULL = {
+    // 单升降
     '#C':'bD','bD':'#C','#D':'bE','bE':'#D','#F':'bG','bG':'#F',
-    '#G':'bA','bA':'#G','#A':'bB','bB':'#A'
+    '#G':'bA','bA':'#G','#A':'bB','bB':'#A',
+    // 重升（x / ##）= 午音名
+    '##C':'D','xC':'D','##D':'E','xD':'E','##E':'#F','xE':'#F',
+    '##F':'G','xF':'G','##G':'A','xG':'A','##A':'B','xA':'B',
+    '##B':'#C','xB':'#C',
+    // 重降 (bb) = 呢音名
+    'bbD':'C','bbE':'D','bbF':'E','bbG':'F','bbA':'G','bbB':'A','bbC':'B'
 };
+
+function allEnharmonics(note) {
+    const set = new Set([note]);
+    // 直接等音
+    if (ENHARMONIC_FULL[note]) set.add(ENHARMONIC_FULL[note]);
+    // 通过钢琴中音名展开
+    for (const [k,v] of Object.entries(ENHARMONIC_FULL)) { if (v===note) set.add(k); }
+    // 如果是升号，也加入募小、重升等形式
+    return set;
+}
 const SCALES = {
     '大调':[0,2,4,5,7,9,11],'自然小调':[0,2,3,5,7,8,10],
     '和声小调':[0,2,3,5,7,8,11],'旋律小调':[0,2,3,5,7,9,11],
@@ -289,11 +307,17 @@ function normToken(t) {
     return t.toUpperCase();
 }
 function normalizeAnswer(s) { return s.trim().split(/\s+/).map(normToken).join(' '); }
+// notesEqual 直接复用 allEnharmonics
 function notesEqual(a,b) {
     if (a===b) return true;
-    if (ENHARMONIC[a]===b||ENHARMONIC[b]===a) return true;
-    const an=SOLMIZATION_TO_NOTE[a]||a, bn=SOLMIZATION_TO_NOTE[b]||b;
-    return an===bn||(ENHARMONIC[an]===bn)||(ENHARMONIC[bn]===an);
+    const ea = allEnharmonics(a), eb = allEnharmonics(b);
+    for (const x of ea) { if (eb.has(x)) return true; }
+    // 转换为升号音名后再比对
+    const an = SOLMIZATION_TO_NOTE[a]||a, bn = SOLMIZATION_TO_NOTE[b]||b;
+    if (an===bn) return true;
+    const ean = allEnharmonics(an), ebn = allEnharmonics(bn);
+    for (const x of ean) { if (ebn.has(x)) return true; }
+    return false;
 }
 function checkAnswer(raw) {
     if (!currentQuestion) return false;
@@ -405,9 +429,45 @@ function handleIntent(intent) {
     return false;
 }
 
-// ═══════════════════════════════════════════
-//  UI
-// ═══════════════════════════════════════════
+// 识别纠正意图：“你判断错”“应该是”“不对”等
+function detectCorrection(t) {
+    if (/判断错了|判错了|你错了|不对|有误|错误|应该是|正确的是|是[#b\w]+不是|纲正|更正|应该/.test(t)) {
+        // 尝试从话语中提取用户给出的音名
+        const notePattern = /([#bx]+)?([A-Ga-g])|([#b]+)?([1-7])/g;
+        const found = [];
+        let m;
+        while ((m = notePattern.exec(t)) !== null) {
+            if (m[1]!==undefined || m[2]) found.push((m[1]||'') + (m[2]||'').toUpperCase());
+            else if (m[3]!==undefined || m[4]) found.push((m[3]||'') + (m[4]||''));
+        }
+        return { type: 'correction', suggestedNote: found[found.length - 1] || null, raw: t };
+    }
+    return null;
+}
+
+// 验证用户纲正是否正确
+function handleCorrection(intent) {
+    if (!currentQuestion) {
+        addMsg('现在没有进行中的题目', 'master'); return true;
+    }
+    const userNote = intent.suggestedNote ? normToken(intent.suggestedNote) : null;
+    const correctNote = normalizeAnswer(currentQuestion.answer);
+
+    if (userNote && notesEqual(userNote, correctNote)) {
+        // 用户给的答案与标准答案等音
+        addMsg(`${userNote} 和 ${currentQuestion.answer} 是等音，我的答案没有错。下一题：`, 'master');
+        setTimeout(askNew, 400);
+    } else if (userNote) {
+        // 用户提供了具体音名，但实际不等音
+        addMsg(`${userNote} 与正确答案 ${currentQuestion.answer} 不等音，我的判断没错。记住了吗？下一题：`, 'master');
+        setTimeout(askNew, 400);
+    } else {
+        // 没有提取到具体音名
+        addMsg(`正确答案是 ${currentQuestion.answer}。下一题：`, 'master');
+        setTimeout(askNew, 400);
+    }
+    return true;
+}
 function addMsg(text, type='master') {
     const area=document.getElementById('chatArea');
     const d=document.createElement('div');
@@ -426,9 +486,15 @@ function askNew() { addMsg(generateQuestion(),'master'); }
 function processInput(text) {
     text=text.trim(); if(!text)return;
     addMsg(text,'user');
+    // 1. 先检测纠正意图
+    const correction = detectCorrection(text);
+    if (correction) { handleCorrection(correction); return; }
+    // 2. 确认命令
     const intent=detectIntent(text);
     if(intent){ handleIntent(intent); return; }
+    // 3. 题目不存在时直接出题
     if(!currentQuestion){ askNew(); return; }
+    // 4. 判断答案
     if(checkAnswer(text)){
         stats.correct++; addMsg('✓ 正确！','correct');
     } else {
