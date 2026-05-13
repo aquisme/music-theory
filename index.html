@@ -284,8 +284,9 @@ let difficulty = 2;
 let questionType = 'all';
 let lockedScale = null;  // {root:'C', type:'大调'} 锁定音阶
 let lockedChord = null;  // '属七和弦' 锁定和弦类型
-let stats = JSON.parse(localStorage.getItem('musicStats')) || {correct:0,incorrect:0};
-let customQuestions = JSON.parse(localStorage.getItem('customQuestions')) || [];
+let stats, customQuestions;
+try { stats = JSON.parse(localStorage.getItem('musicStats')) || {correct:0,incorrect:0}; } catch(e) { stats = {correct:0,incorrect:0}; }
+try { customQuestions = JSON.parse(localStorage.getItem('customQuestions')) || []; } catch(e) { customQuestions = []; }
 let voiceMode = false;
 
 // ═══════════════════════════════════════════
@@ -402,11 +403,16 @@ function generateQuestion() {
 // ═══════════════════════════════════════════
 //  AI 配置
 // ═══════════════════════════════════════════
-let aiConfig = JSON.parse(localStorage.getItem('aiConfig') || 'null') || {
-    baseUrl: 'https://api.openai.com/v1',
-    apiKey: '',
-    model: 'gpt-4o-mini'
-};
+let aiConfig;
+try {
+    aiConfig = JSON.parse(localStorage.getItem('aiConfig') || 'null') || {
+        baseUrl: 'https://api.openai.com/v1',
+        apiKey: '',
+        model: 'gpt-4o-mini'
+    };
+} catch(e) {
+    aiConfig = { baseUrl: 'https://api.openai.com/v1', apiKey: '', model: 'gpt-4o-mini' };
+}
 
 function saveAiConfig() {
     localStorage.setItem('aiConfig', JSON.stringify(aiConfig));
@@ -432,17 +438,17 @@ function showAiConfigModal() {
         </select>
 
         <label style="font-size:13px;color:#3c3c43;font-weight:500;">API Base URL</label>
-        <input id="aiBaseUrl" type="text" value="${aiConfig.baseUrl}"
+        <input id="aiBaseUrl" type="text"
             style="width:100%;margin:6px 0 14px;padding:10px 12px;border:1.5px solid #e5e5ea;border-radius:10px;font-size:14px;background:#f9f9f9;outline:none;"
             placeholder="https://api.openai.com/v1" />
 
         <label style="font-size:13px;color:#3c3c43;font-weight:500;">API Key</label>
-        <input id="aiKey" type="password" value="${aiConfig.apiKey}"
+        <input id="aiKey" type="password"
             style="width:100%;margin:6px 0 14px;padding:10px 12px;border:1.5px solid #e5e5ea;border-radius:10px;font-size:14px;background:#f9f9f9;outline:none;"
             placeholder="sk-..." />
 
         <label style="font-size:13px;color:#3c3c43;font-weight:500;">模型</label>
-        <input id="aiModel" type="text" value="${aiConfig.model}"
+        <input id="aiModel" type="text"
             style="width:100%;margin:6px 0 20px;padding:10px 12px;border:1.5px solid #e5e5ea;border-radius:10px;font-size:14px;background:#f9f9f9;outline:none;"
             placeholder="gpt-4o-mini" />
 
@@ -451,6 +457,11 @@ function showAiConfigModal() {
             <button id="aiSave" style="flex:2;padding:11px;border:none;border-radius:10px;background:#1c1c1e;color:#fff;font-size:15px;font-weight:600;cursor:pointer;">保存</button>
         </div>
     `;
+
+    // 用 .value 赋值，避免特殊字符破坏 HTML
+    box.querySelector('#aiBaseUrl').value = aiConfig.baseUrl || '';
+    box.querySelector('#aiKey').value     = aiConfig.apiKey  || '';
+    box.querySelector('#aiModel').value   = aiConfig.model   || '';
 
     const presets = {
         openai:   { url: 'https://api.openai.com/v1',                         model: 'gpt-4o-mini' },
