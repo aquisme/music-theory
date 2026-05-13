@@ -596,6 +596,8 @@ function pushHistory(role, content) {
     // 保留最近 20 条，防止内存无限增长
     if (conversationHistory.length > 20) conversationHistory.splice(0, 2);
 }
+
+function handleIntent(intent) {
     const ln=['简单','较易','中等','较难','困难'];
     const tn={all:'全部',interval:'音程',scale:'音阶',chord:'和弦',custom:'自定义'};
     switch(intent.type) {
