@@ -31,12 +31,18 @@
             background: #fff;
             border-bottom: 0.5px solid #e5e5ea;
             text-align: center;
+            position: relative;
         }
         .header h1 { font-size: 17px; font-weight: 600; }
         .stats { display: flex; justify-content: center; gap: 8px; margin-top: 5px; }
         .badge { font-size: 12px; color: #8e8e93; background: #f2f2f7; padding: 2px 10px; border-radius: 10px; }
         .badge.good { color: #34c759; }
         .badge.bad  { color: #ff3b30; }
+        .config-btn {
+            position: absolute; right: 14px; top: 50%; transform: translateY(-50%);
+            background: none; border: none; font-size: 18px; cursor: pointer; padding: 4px;
+            color: #8e8e93;
+        }
 
         /* ─── Chat ─── */
         .chat-area {
@@ -151,6 +157,7 @@
 <div class="app" id="app">
     <div class="header">
         <h1>乐理大师</h1>
+        <button class="config-btn" id="configBtn" title="AI 配置">⚙️</button>
         <div class="stats">
             <span class="badge good">✓ <span id="sc">0</span></span>
             <span class="badge bad">✗ <span id="si">0</span></span>
@@ -387,67 +394,193 @@ function generateQuestion() {
 }
 
 // ═══════════════════════════════════════════
-//  意图识别
+//  AI 配置
 // ═══════════════════════════════════════════
-// 语义匹配辅助：判断输入是否像答案（短且不含动词）
-function looksLikeAnswer(t) {
-    // 如果超过 10 个字，就很可能是对话而非答案
-    if (t.length > 10) return false;
-    // 如果包含明显指令词就不是答案
-    if (/考|练|出|换|切|跳|要|请|帮|怎|想|问|让|改|调|题|难|失败|不对|错|应该/.test(t)) return false;
-    return true;
+let aiConfig = JSON.parse(localStorage.getItem('aiConfig') || 'null') || {
+    baseUrl: 'https://api.openai.com/v1',
+    apiKey: '',
+    model: 'gpt-4o-mini'
+};
+
+function saveAiConfig() {
+    localStorage.setItem('aiConfig', JSON.stringify(aiConfig));
 }
 
-function detectIntent(t) {
-    // 难度
-    if (/^(简单|容易|easy)$/i.test(t))  return {type:'difficulty',value:1};
-    if (/较易|稍简单/.test(t))           return {type:'difficulty',value:2};
-    if (/中等|普通|normal/i.test(t))     return {type:'difficulty',value:3};
-    if (/较难|稍难/.test(t))            return {type:'difficulty',value:4};
-    if (/^(困难|hard)$/i.test(t))        return {type:'difficulty',value:5};
-    const dm=t.match(/难度\s*([1-5])/);  if (dm) return {type:'difficulty',value:+dm[1]};
-    if (/加[大难]|升难|更难|再难|难一点/.test(t)) return {type:'difficulty',value:Math.min(5,difficulty+1)};
-    if (/降[低难]|更简单|再简单|简单一点|降低难度/.test(t)) return {type:'difficulty',value:Math.max(1,difficulty-1)};
+// ── AI 配置弹窗 ──
+function showAiConfigModal() {
+    const overlay = document.createElement('div');
+    overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:1000;display:flex;align-items:center;justify-content:center;padding:20px;';
 
-    // 题型切换：匹配各种说法
-    const intervalPat  = /音程/;
-    const scalePat     = /音阶|调式|大调|小调|五声|调内|key/i;
-    const chordPat     = /和弦/;
-    const actionPat    = /考|练|出|切|换|只练|只出|只考|题型|改|刷|重新|再来一道|就出|给我出|让我练|来练|练练|就考|重出|换个/;
+    const box = document.createElement('div');
+    box.style.cssText = 'background:#fff;border-radius:16px;padding:22px 20px;width:100%;max-width:400px;box-shadow:0 10px 40px rgba(0,0,0,.2);';
+    box.innerHTML = `
+        <h2 style="font-size:16px;font-weight:600;margin-bottom:4px;">AI 助手配置</h2>
+        <p style="font-size:13px;color:#8e8e93;margin-bottom:16px;">配置后乐理大师就能听懂任何自然语言指令</p>
 
-    if (intervalPat.test(t)  && (actionPat.test(t)||t.length<=4)) return {type:'qtype',value:'interval'};
-    if (scalePat.test(t)     && (actionPat.test(t)||t.length<=4)) return {type:'qtype',value:'scale'};
-    if (chordPat.test(t)     && (actionPat.test(t)||t.length<=4)) return {type:'qtype',value:'chord'};
+        <label style="font-size:13px;color:#3c3c43;font-weight:500;">服务商预设</label>
+        <select id="aiPreset" style="width:100%;margin:6px 0 14px;padding:10px 12px;border:1.5px solid #e5e5ea;border-radius:10px;font-size:14px;background:#f9f9f9;outline:none;">
+            <option value="openai">OpenAI (api.openai.com)</option>
+            <option value="deepseek">DeepSeek (api.deepseek.com)</option>
+            <option value="qwen">通义千问 (dashscope)</option>
+            <option value="custom">自定义</option>
+        </select>
 
-    // 全部 / 混合
-    if (/全部|混合|随机|迎来一道|怎么都行|all/i.test(t)) return {type:'qtype',value:'all'};
+        <label style="font-size:13px;color:#3c3c43;font-weight:500;">API Base URL</label>
+        <input id="aiBaseUrl" type="text" value="${aiConfig.baseUrl}"
+            style="width:100%;margin:6px 0 14px;padding:10px 12px;border:1.5px solid #e5e5ea;border-radius:10px;font-size:14px;background:#f9f9f9;outline:none;"
+            placeholder="https://api.openai.com/v1" />
 
-    // 用户指定特定音阶
-    const scaleMatch = t.match(/([A-Ga-g#b升降]+)\s*(大调|自然小调|和声小调|旋律小调|五声音阶|小调|多利亚调式|弗里几亚调式|利底亚调式|混合利底亚|洛克里亚调式)/);
-    if (scaleMatch && (actionPat.test(t) || /题|级|不同/.test(t))) {
-        let root = scaleMatch[1].replace(/升/g,'#').replace(/降/g,'b').toUpperCase();
-        return {type:'qtypeFixed', scaleRoot: root, scaleType: scaleMatch[2]};
-    }
+        <label style="font-size:13px;color:#3c3c43;font-weight:500;">API Key</label>
+        <input id="aiKey" type="password" value="${aiConfig.apiKey}"
+            style="width:100%;margin:6px 0 14px;padding:10px 12px;border:1.5px solid #e5e5ea;border-radius:10px;font-size:14px;background:#f9f9f9;outline:none;"
+            placeholder="sk-..." />
 
-    // 换题 / 跳过
-    if (/换[一道题个]?|跳过|下一题|再来|不想做这题|換个|这题不出|skip|next/i.test(t)) return {type:'next'};
-    if (/统计|正确率|成绩|进度/.test(t))   return {type:'stats'};
-    if (/添加题目|新增题目|自定义题/.test(t))   return {type:'addCustom'};
-    if (/重置|清空统计/.test(t))       return {type:'reset'};
-    if (/帮助|怎么用|指令|功能|help/i.test(t))   return {type:'help'};
+        <label style="font-size:13px;color:#3c3c43;font-weight:500;">模型</label>
+        <input id="aiModel" type="text" value="${aiConfig.model}"
+            style="width:100%;margin:6px 0 20px;padding:10px 12px;border:1.5px solid #e5e5ea;border-radius:10px;font-size:14px;background:#f9f9f9;outline:none;"
+            placeholder="gpt-4o-mini" />
+
+        <div style="display:flex;gap:10px;">
+            <button id="aiCancel" style="flex:1;padding:11px;border:1.5px solid #e5e5ea;border-radius:10px;background:#fff;font-size:15px;cursor:pointer;">取消</button>
+            <button id="aiSave" style="flex:2;padding:11px;border:none;border-radius:10px;background:#1c1c1e;color:#fff;font-size:15px;font-weight:600;cursor:pointer;">保存</button>
+        </div>
+    `;
+
+    const presets = {
+        openai:   { url: 'https://api.openai.com/v1',                         model: 'gpt-4o-mini' },
+        deepseek: { url: 'https://api.deepseek.com/v1',                        model: 'deepseek-chat' },
+        qwen:     { url: 'https://dashscope.aliyuncs.com/compatible-mode/v1', model: 'qwen-turbo' },
+        custom:   { url: '', model: '' }
+    };
+
+    overlay.appendChild(box);
+    document.body.appendChild(overlay);
+
+    const selPreset = box.querySelector('#aiPreset');
+    const inpUrl    = box.querySelector('#aiBaseUrl');
+    const inpKey    = box.querySelector('#aiKey');
+    const inpModel  = box.querySelector('#aiModel');
+
+    selPreset.addEventListener('change', () => {
+        const p = presets[selPreset.value];
+        if (p.url) inpUrl.value = p.url;
+        if (p.model) inpModel.value = p.model;
+    });
+
+    box.querySelector('#aiCancel').addEventListener('click', () => overlay.remove());
+    box.querySelector('#aiSave').addEventListener('click', () => {
+        aiConfig.baseUrl = inpUrl.value.trim().replace(/\/$/, '');
+        aiConfig.apiKey  = inpKey.value.trim();
+        aiConfig.model   = inpModel.value.trim();
+        saveAiConfig();
+        overlay.remove();
+        addMsg('✅ AI 配置已保存！现在我能听懂你说的任何话了。', 'master');
+    });
+}
+
+// ═══════════════════════════════════════════
+//  意图识别（快速本地路径 + LLM 深度理解）
+// ═══════════════════════════════════════════
+
+// 判断是否是纯音名答案（走本地快速路径，不需要 LLM）
+function looksLikePureAnswer(t) {
+    // 纯音名/首调音符，格式如：C、#F、bA、1、#4、b6，可多个空格分隔或无分隔
+    return /^([#b]{0,2}[A-Ga-g1-7]\s*)+$/.test(t.trim());
+}
+
+// 本地快速 regex 兜底（只处理纯音名和极明确的单词指令）
+function quickLocalIntent(t) {
+    // 换题/跳过
+    if (/^(换[一道题个]?|跳过|下一题|next|skip)$/i.test(t)) return {type:'next'};
+    // 统计
+    if (/^(统计|成绩|正确率)$/.test(t)) return {type:'stats'};
+    // 帮助
+    if (/^(帮助|help)$/i.test(t)) return {type:'help'};
+    // 重置
+    if (/^(重置|清空)$/.test(t)) return {type:'reset'};
     return null;
 }
+
+// LLM 意图解析
+const INTENT_SYSTEM_PROMPT = `你是乐理大师App的意图解析器。用户会发送中文或英文消息，你需要判断用户意图并返回JSON。
+
+可用题型：interval（音程）、scale（音阶/调式）、chord（和弦）、all（随机）
+可用音阶：大调、自然小调、和声小调、旋律小调、五声音阶、多利亚调式、弗里几亚调式、利底亚调式、混合利底亚、洛克里亚调式
+可用和弦：大三和弦、小三和弦、减三和弦、增三和弦、属七和弦、大七和弦、小七和弦、减七和弦、半减七和弦、小大七和弦
+音名：C #C D #D E F #F G #G A #A B
+
+返回以下JSON格式之一（不要有其他文字）：
+
+{"type":"qtype","value":"interval"} // 切换到音程题
+{"type":"qtype","value":"scale"}    // 切换到音阶题
+{"type":"qtype","value":"chord"}    // 切换到和弦题
+{"type":"qtype","value":"all"}      // 随机题型
+{"type":"qtypeFixed","scaleRoot":"C","scaleType":"大调"}  // 练习特定音阶，如"考我C大调"
+{"type":"qtypeChord","chordType":"属七和弦"}  // 练习特定和弦类型
+{"type":"difficulty","value":1}     // 1=简单 2=较易 3=中等 4=较难 5=困难
+{"type":"difficultyDelta","delta":1}  // 相对难度 +1或-1
+{"type":"next"}   // 换一题/跳过
+{"type":"stats"}  // 查看统计
+{"type":"reset"}  // 重置统计
+{"type":"help"}   // 帮助说明
+{"type":"answer"} // 这是答案输入，不是指令
+{"type":"unknown","reply":"..."}    // 无法理解，reply字段填写回复内容
+
+规则：
+- 用户说"简单一点""加难""难度3"等→difficulty
+- 用户说"考我C大调""C大调练习"→qtypeFixed
+- 用户说"出属七和弦题""7和弦"→qtypeChord  
+- 用户说"换成音程题""只出和弦"→qtype
+- 用户输入看起来是音名答案→answer
+- 如果是日常闲聊/问候→unknown，reply里简短回复`;
+
+async function callLLMIntent(userText) {
+    if (!aiConfig.apiKey) return null;
+    try {
+        const resp = await fetch(`${aiConfig.baseUrl}/chat/completions`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${aiConfig.apiKey}`
+            },
+            body: JSON.stringify({
+                model: aiConfig.model,
+                messages: [
+                    { role: 'system', content: INTENT_SYSTEM_PROMPT },
+                    { role: 'user', content: userText }
+                ],
+                max_tokens: 120,
+                temperature: 0
+            })
+        });
+        if (!resp.ok) return null;
+        const data = await resp.json();
+        const content = data.choices?.[0]?.message?.content?.trim();
+        if (!content) return null;
+        // 提取 JSON（防止模型多输出文字）
+        const jsonMatch = content.match(/\{[\s\S]*\}/);
+        if (!jsonMatch) return null;
+        return JSON.parse(jsonMatch[0]);
+    } catch(e) {
+        return null;
+    }
+}
+
 function handleIntent(intent) {
     const ln=['简单','较易','中等','较难','困难'];
     const tn={all:'全部',interval:'音程',scale:'音阶',chord:'和弦',custom:'自定义'};
     switch(intent.type) {
         case 'difficulty':
-            difficulty=intent.value;
+            difficulty = Math.max(1, Math.min(5, intent.value));
+            addMsg(`难度→${ln[difficulty-1]}，继续：`,'master');
+            setTimeout(askNew,400); return true;
+        case 'difficultyDelta':
+            difficulty = Math.max(1, Math.min(5, difficulty + (intent.delta||0)));
             addMsg(`难度→${ln[difficulty-1]}，继续：`,'master');
             setTimeout(askNew,400); return true;
         case 'qtype':
             questionType=intent.value;
-            addMsg(`题型→${tn[questionType]}，开始：`,'master');
+            addMsg(`好的，切换到${tn[questionType]}题：`,'master');
             setTimeout(askNew,400); return true;
         case 'next':
             currentQuestion=null; askNew(); return true;
@@ -456,21 +589,25 @@ function handleIntent(intent) {
             addMsg(`共${tot}题，正确${stats.correct}，正确率${tot>0?Math.round(stats.correct/tot*100):0}%`,'master');
             return true;
         }
-        case 'addCustom':
-            setTimeout(()=>{
-                const q=prompt('题目内容：'); if(!q)return;
-                const a=prompt('正确答案：'); if(!a)return;
-                customQuestions.push({question:q,answer:a});
-                localStorage.setItem('customQuestions',JSON.stringify(customQuestions));
-                addMsg('已添加','master');
-            },100); return true;
         case 'reset':
             if(confirm('重置统计？')){ stats={correct:0,incorrect:0}; updateStats(); addMsg('已重置','master'); }
             return true;
+        case 'qtypeChord': {
+            questionType = 'chord';
+            const ct = intent.chordType;
+            if (CHORDS[ct]) {
+                const root = randomNote();
+                const notes = getChordNotes(root, ct);
+                currentQuestion = {question:`${root}${ct}的各音？`, answer: notes.join(' ')};
+                addMsg(currentQuestion.question, 'master');
+            } else {
+                addMsg(`好的，切换到和弦题！`, 'master');
+                setTimeout(askNew, 400);
+            }
+            return true;
+        }
         case 'qtypeFixed': {
-            // 用户指定了具体音阶且要求练习
             questionType = 'scale';
-            // 临时锋定该音阶的题目
             const st = intent.scaleType || '大调';
             const root = intent.scaleRoot || randomNote();
             const validScale = SCALES[st] ? st : '大调';
@@ -480,9 +617,22 @@ function handleIntent(intent) {
             addMsg(currentQuestion.question, 'master');
             return true;
         }
-        case 'help':
-            addMsg('说：「换音阶题」「只出和弦」「简单一点」「加难」「难度4」「统计」「换一题」\n答案格式：C  #F  bA  或  1  #4  b6','master');
+        case 'answer':
+            return false; // 交给答案判断逻辑
+        case 'unknown':
+            if (intent.reply) addMsg(intent.reply, 'master');
             return true;
+        case 'help':
+            addMsg('你可以直接说：\n「考我C大调」「只出属七和弦」「音程题」「简单一点」「加难」「换一题」「统计」\n答案格式：C  #F  bA  或  1  #4  b6','master');
+            return true;
+        case 'addCustom':
+            setTimeout(()=>{
+                const q=prompt('题目内容：'); if(!q)return;
+                const a=prompt('正确答案：'); if(!a)return;
+                customQuestions.push({question:q,answer:a});
+                localStorage.setItem('customQuestions',JSON.stringify(customQuestions));
+                addMsg('已添加','master');
+            },100); return true;
     }
     return false;
 }
@@ -531,6 +681,7 @@ function addMsg(text, type='master') {
     const d=document.createElement('div');
     d.className=`message ${type}`; d.textContent=text;
     area.appendChild(d); area.scrollTop=area.scrollHeight;
+    return d;
 }
 function updateStats() {
     document.getElementById('sc').textContent=stats.correct;
@@ -541,29 +692,57 @@ function updateStats() {
 }
 function askNew() { addMsg(generateQuestion(),'master'); }
 
-function processInput(text) {
+async function processInput(text) {
     text=text.trim(); if(!text)return;
     addMsg(text,'user');
 
-    // 1. 先检测纠正意图
+    // 1. 纠正意图（本地）
     const correction = detectCorrection(text);
     if (correction) { handleCorrection(correction); return; }
 
-    // 2. 检测操作意图
-    const intent = detectIntent(text);
-    if (intent) { handleIntent(intent); return; }
+    // 2. 纯音名答案 → 直接判题（不走 LLM，无延迟）
+    if (looksLikePureAnswer(text) && currentQuestion) {
+        judgeAnswer(text); return;
+    }
 
-    // 3. 如果没有当前题目，直接出题
-    if (!currentQuestion) { askNew(); return; }
+    // 3. 极明确单词指令 → 本地快速处理
+    const quick = quickLocalIntent(text);
+    if (quick) { handleIntent(quick); return; }
 
-    // 4. 输入比较长且含有动词，可能是对话而非答案
-    //    这种情况下回复“我没听懂”并告知用法
-    if (text.length > 10 && !/^[#b\d\sA-Ga-g升降]+$/.test(text)) {
-        addMsg('没听懂。可说：「换音阶题」「加难」「统计」「跳过」，或直接输入答案。', 'master');
+    // 4. 有 AI Key → 走 LLM 理解
+    if (aiConfig.apiKey) {
+        const thinkingMsg = addMsg('…', 'master');
+        const intent = await callLLMIntent(text);
+        thinkingMsg.remove();
+
+        if (intent) {
+            if (intent.type === 'answer') {
+                // LLM 认为是答案
+                if (currentQuestion) { judgeAnswer(text); }
+                else { askNew(); }
+                return;
+            }
+            if (handleIntent(intent)) return;
+        }
+        // LLM 没有识别到意图
+        if (!currentQuestion) { askNew(); return; }
+        judgeAnswer(text);
         return;
     }
 
-    // 5. 判断答案
+    // 5. 没有 AI Key → 提示配置
+    if (!currentQuestion) { askNew(); return; }
+
+    // 如果输入很像答案就判题，否则提示配置 AI
+    if (/^[#b\d\sA-Ga-g升降]+$/.test(text)) {
+        judgeAnswer(text);
+    } else {
+        addMsg('配置 AI 后我能听懂任何自然语言指令。点击右上角 ⚙️ 配置，或直接输入音名答案。', 'master');
+    }
+}
+
+function judgeAnswer(text) {
+    if (!currentQuestion) return;
     if (checkAnswer(text)) {
         stats.correct++; addMsg('✓ 正确！', 'correct');
     } else {
@@ -707,8 +886,15 @@ vrBtn.addEventListener('mouseleave',() => { if (isRecording) stopRec(); });
 // ═══════════════════════════════════════════
 window.addEventListener('load', () => {
     updateStats();
-    addMsg('准备好了，开始：','master');
-    setTimeout(askNew, 300);
+    document.getElementById('configBtn').addEventListener('click', showAiConfigModal);
+
+    if (!aiConfig.apiKey) {
+        addMsg('👋 你好！我是乐理大师。点右上角 ⚙️ 配置 AI Key，配置后你可以用任何自然语言告诉我出什么题。', 'master');
+        setTimeout(() => addMsg('现在先开始：', 'master'), 600);
+    } else {
+        addMsg('准备好了，开始：','master');
+    }
+    setTimeout(askNew, 800);
 });
 </script>
 </body>
