@@ -300,13 +300,31 @@ const randomChoice = a => a[Math.floor(Math.random()*a.length)];
 
 function normToken(t) {
     t = t.trim().replace(/降/g,'b').replace(/升/g,'#');
+    // 支持首调唱名：#4、1、b6
     const sm = t.match(/^([#b]?)([1-7])$/);
     if (sm) return SOLMIZATION_TO_NOTE[sm[1]+sm[2]] || t.toUpperCase();
-    const nm = t.match(/^([#b]?)([A-Ga-g])$/);
+    // 支持音名：[#b]?[A-G]
+    const nm = t.match(/^([#b]{0,2})([A-Ga-g])$/);
     if (nm) return nm[1]+nm[2].toUpperCase();
     return t.toUpperCase();
 }
-function normalizeAnswer(s) { return s.trim().split(/\s+/).map(normToken).join(' '); }
+
+// 解析答案字符串：支持有无空格隔开的形式，如 "#4#1#6" 或 "#F #A #C"
+function splitAnswer(s) {
+    s = s.trim().replace(/降/g,'b').replace(/升/g,'#');
+    // 先尝试按空格分割
+    if (/\s/.test(s)) return s.split(/\s+/);
+    // 无空格：按 [#b]?[A-G1-7] 分割
+    const tokens = [];
+    const re = /([#b]{0,2})([A-Ga-g]|[1-7])/g;
+    let m;
+    while ((m = re.exec(s)) !== null) tokens.push(m[1]+(m[2]));
+    return tokens.length > 0 ? tokens : [s];
+}
+
+function normalizeAnswer(s) {
+    return splitAnswer(s).map(normToken).join(' ');
+}
 // notesEqual 直接复用 allEnharmonics
 function notesEqual(a,b) {
     if (a===b) return true;
@@ -371,25 +389,52 @@ function generateQuestion() {
 // ═══════════════════════════════════════════
 //  意图识别
 // ═══════════════════════════════════════════
+// 语义匹配辅助：判断输入是否像答案（短且不含动词）
+function looksLikeAnswer(t) {
+    // 如果超过 10 个字，就很可能是对话而非答案
+    if (t.length > 10) return false;
+    // 如果包含明显指令词就不是答案
+    if (/考|练|出|换|切|跳|要|请|帮|怎|想|问|让|改|调|题|难|失败|不对|错|应该/.test(t)) return false;
+    return true;
+}
+
 function detectIntent(t) {
+    // 难度
     if (/^(简单|容易|easy)$/i.test(t))  return {type:'difficulty',value:1};
     if (/较易|稍简单/.test(t))           return {type:'difficulty',value:2};
     if (/中等|普通|normal/i.test(t))     return {type:'difficulty',value:3};
     if (/较难|稍难/.test(t))            return {type:'difficulty',value:4};
     if (/^(困难|hard)$/i.test(t))        return {type:'difficulty',value:5};
     const dm=t.match(/难度\s*([1-5])/);  if (dm) return {type:'difficulty',value:+dm[1]};
-    if (/加[大难]|升难|更难|再难/.test(t)) return {type:'difficulty',value:Math.min(5,difficulty+1)};
-    if (/降[低难]|更简单|再简单|简单一点/.test(t)) return {type:'difficulty',value:Math.max(1,difficulty-1)};
-    if (/音程/.test(t))   return {type:'qtype',value:'interval'};
-    if (/音阶|调式/.test(t)) return {type:'qtype',value:'scale'};
-    if (/和弦/.test(t))   return {type:'qtype',value:'chord'};
-    if (/自定义/.test(t)) return {type:'qtype',value:'custom'};
-    if (/全部|混合|随机|all/i.test(t)) return {type:'qtype',value:'all'};
-    if (/换[一道题]?|跳过|下一题|再来|skip|next/i.test(t)) return {type:'next'};
-    if (/统计|正确率|成绩/.test(t))   return {type:'stats'};
-    if (/添加题目|新增题目/.test(t))   return {type:'addCustom'};
+    if (/加[大难]|升难|更难|再难|难一点/.test(t)) return {type:'difficulty',value:Math.min(5,difficulty+1)};
+    if (/降[低难]|更简单|再简单|简单一点|降低难度/.test(t)) return {type:'difficulty',value:Math.max(1,difficulty-1)};
+
+    // 题型切换：匹配各种说法
+    const intervalPat  = /音程/;
+    const scalePat     = /音阶|调式|大调|小调|五声|调内|key/i;
+    const chordPat     = /和弦/;
+    const actionPat    = /考|练|出|切|换|只练|只出|只考|题型|改|刷|重新|再来一道|就出|给我出|让我练|来练|练练|就考|重出|换个/;
+
+    if (intervalPat.test(t)  && (actionPat.test(t)||t.length<=4)) return {type:'qtype',value:'interval'};
+    if (scalePat.test(t)     && (actionPat.test(t)||t.length<=4)) return {type:'qtype',value:'scale'};
+    if (chordPat.test(t)     && (actionPat.test(t)||t.length<=4)) return {type:'qtype',value:'chord'};
+
+    // 全部 / 混合
+    if (/全部|混合|随机|迎来一道|怎么都行|all/i.test(t)) return {type:'qtype',value:'all'};
+
+    // 用户指定特定音阶
+    const scaleMatch = t.match(/([A-Ga-g#b升降]+)\s*(大调|自然小调|和声小调|旋律小调|五声音阶|小调|多利亚调式|弗里几亚调式|利底亚调式|混合利底亚|洛克里亚调式)/);
+    if (scaleMatch && (actionPat.test(t) || /题|级|不同/.test(t))) {
+        let root = scaleMatch[1].replace(/升/g,'#').replace(/降/g,'b').toUpperCase();
+        return {type:'qtypeFixed', scaleRoot: root, scaleType: scaleMatch[2]};
+    }
+
+    // 换题 / 跳过
+    if (/换[一道题个]?|跳过|下一题|再来|不想做这题|換个|这题不出|skip|next/i.test(t)) return {type:'next'};
+    if (/统计|正确率|成绩|进度/.test(t))   return {type:'stats'};
+    if (/添加题目|新增题目|自定义题/.test(t))   return {type:'addCustom'};
     if (/重置|清空统计/.test(t))       return {type:'reset'};
-    if (/帮助|怎么用|help/i.test(t))   return {type:'help'};
+    if (/帮助|怎么用|指令|功能|help/i.test(t))   return {type:'help'};
     return null;
 }
 function handleIntent(intent) {
@@ -422,6 +467,19 @@ function handleIntent(intent) {
         case 'reset':
             if(confirm('重置统计？')){ stats={correct:0,incorrect:0}; updateStats(); addMsg('已重置','master'); }
             return true;
+        case 'qtypeFixed': {
+            // 用户指定了具体音阶且要求练习
+            questionType = 'scale';
+            // 临时锋定该音阶的题目
+            const st = intent.scaleType || '大调';
+            const root = intent.scaleRoot || randomNote();
+            const validScale = SCALES[st] ? st : '大调';
+            const deg = Math.floor(Math.random() * SCALES[validScale].length) + 1;
+            const answer = getScaleNotes(root, validScale)[deg - 1];
+            currentQuestion = {question:`${root}${validScale}第${deg}级音？`, answer};
+            addMsg(currentQuestion.question, 'master');
+            return true;
+        }
         case 'help':
             addMsg('说：「换音阶题」「只出和弦」「简单一点」「加难」「难度4」「统计」「换一题」\n答案格式：C  #F  bA  或  1  #4  b6','master');
             return true;
@@ -486,35 +544,54 @@ function askNew() { addMsg(generateQuestion(),'master'); }
 function processInput(text) {
     text=text.trim(); if(!text)return;
     addMsg(text,'user');
+
     // 1. 先检测纠正意图
     const correction = detectCorrection(text);
     if (correction) { handleCorrection(correction); return; }
-    // 2. 确认命令
-    const intent=detectIntent(text);
-    if(intent){ handleIntent(intent); return; }
-    // 3. 题目不存在时直接出题
-    if(!currentQuestion){ askNew(); return; }
-    // 4. 判断答案
-    if(checkAnswer(text)){
-        stats.correct++; addMsg('✓ 正确！','correct');
+
+    // 2. 检测操作意图
+    const intent = detectIntent(text);
+    if (intent) { handleIntent(intent); return; }
+
+    // 3. 如果没有当前题目，直接出题
+    if (!currentQuestion) { askNew(); return; }
+
+    // 4. 输入比较长且含有动词，可能是对话而非答案
+    //    这种情况下回复“我没听懂”并告知用法
+    if (text.length > 10 && !/^[#b\d\sA-Ga-g升降]+$/.test(text)) {
+        addMsg('没听懂。可说：「换音阶题」「加难」「统计」「跳过」，或直接输入答案。', 'master');
+        return;
+    }
+
+    // 5. 判断答案
+    if (checkAnswer(text)) {
+        stats.correct++; addMsg('✓ 正确！', 'correct');
     } else {
-        stats.incorrect++; addMsg(`✗ 错误，答案：${currentQuestion.answer}`,'incorrect');
+        stats.incorrect++; addMsg(`✗ 错误，答案：${currentQuestion.answer}`, 'incorrect');
     }
     updateStats();
-    setTimeout(askNew,900);
+    setTimeout(askNew, 900);
 }
 
 // ═══════════════════════════════════════════
 //  文字输入
 // ═══════════════════════════════════════════
+let composing = false;
+const userInputEl = document.getElementById('userInput');
+
+userInputEl.addEventListener('compositionstart', () => { composing = true; });
+userInputEl.addEventListener('compositionend',   () => { composing = false; });
+
 document.getElementById('sendBtn').addEventListener('click',()=>{
     if(voiceMode) return;
-    const inp=document.getElementById('userInput');
-    processInput(inp.value); inp.value='';
+    processInput(userInputEl.value); userInputEl.value='';
 });
-document.getElementById('userInput').addEventListener('keydown',e=>{
-    if(e.key==='Enter'&&!e.shiftKey){
-        e.preventDefault(); processInput(e.target.value); e.target.value='';
+
+userInputEl.addEventListener('keydown', e => {
+    if (e.key === 'Enter' && !e.shiftKey && !composing) {
+        e.preventDefault();
+        processInput(userInputEl.value);
+        userInputEl.value = '';
     }
 });
 
