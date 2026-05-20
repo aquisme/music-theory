@@ -631,14 +631,21 @@ const QUESTION_SYSTEM_PROMPT = `你是一个专业乐理老师，负责出题考
 
 音名格式：C #C D #D E F #F G #G A #A B（用#表示升，b表示降）`;
 
-async function callLLMQuestion(constraint, useKnowledge=false) {
+async function callLLMQuestion(constraint, useKnowledge=false, avoidQuestions=[]) {
     if (!aiConfig.apiKey) return null;
     try {
         let userPrompt = constraint;
+
+        // 拼"已出过的题，不要重复"
+        const avoidHint = avoidQuestions.length > 0
+            ? `\n\n注意：以下题目已经出过，不要重复类似的题：\n${avoidQuestions.map((q,i)=>`${i+1}. ${q}`).join('\n')}`
+            : '';
+
         if (useKnowledge && knowledgeBase.length > 0) {
-            // 知识库超过4000字只取前4000，避免超 token
             const kb = knowledgeBase.length > 4000 ? knowledgeBase.slice(0, 4000) + '…（已截断）' : knowledgeBase;
-            userPrompt = `根据以下乐理知识出一道题：\n\n${kb}\n\n要求：${constraint || '从中选择一个知识点出题'}`;
+            userPrompt = `根据以下乐理知识出一道题：\n\n${kb}\n\n要求：${constraint || '从中选择一个知识点出题'}${avoidHint}`;
+        } else {
+            userPrompt = constraint + avoidHint;
         }
         const resp = await fetch(`${aiConfig.baseUrl}/chat/completions`, {
             method: 'POST',
@@ -820,12 +827,14 @@ function handleIntent(intent) {
             if (!aiConfig.apiKey) { addMsg('需要配置 AI Key 才能出自由题型。', 'master'); return true; }
             questionType = 'free'; lockedScales = []; lockedChord = null;
             freeConstraint = intent.constraint || '出一道乐理题';
+            recentQuestions = []; // 新约束重置历史
             const thinkQ = addMsg('正在出题…', 'master');
-            callLLMQuestion(freeConstraint).then(q => {
+            callLLMQuestion(freeConstraint, false, recentQuestions).then(q => {
                 thinkQ.remove();
                 if (q && q.question) {
                     currentQuestion = { question: q.question, answer: q.answer, answerType: q.type || 'note' };
                     lastQuestionText = q.question;
+                    addToRecentQuestions(q.question);
                     addMsg(q.question, 'master');
                 } else {
                     addMsg('出题失败，请重试。', 'master');
@@ -838,12 +847,14 @@ function handleIntent(intent) {
             if (!knowledgeBase) { addMsg('📚 知识库还是空的，点右上角 ⚙️ → 知识库 粘贴书本内容。', 'master'); return true; }
             questionType = 'free'; lockedScales = []; lockedChord = null;
             freeConstraint = '书本题：' + (intent.topic || '');
+            recentQuestions = []; // 新约束重置历史
             const thinkB = addMsg('正在从知识库出题…', 'master');
-            callLLMQuestion(intent.topic || '', true).then(q => {
+            callLLMQuestion(intent.topic || '', true, recentQuestions).then(q => {
                 thinkB.remove();
                 if (q && q.question) {
                     currentQuestion = { question: q.question, answer: q.answer, answerType: q.type || 'text' };
                     lastQuestionText = q.question;
+                    addToRecentQuestions(q.question);
                     addMsg(q.question, 'master');
                 } else {
                     addMsg('出题失败，请重试。', 'master');
@@ -923,33 +934,32 @@ function updateStats() {
     localStorage.setItem('musicStats',JSON.stringify(stats));
 }
 let freeConstraint = ''; // 记住自由出题的约束，以便持续出同类题
+let recentQuestions = []; // 最近出过的题目，用于防重复
+
+function addToRecentQuestions(q) {
+    recentQuestions.push(q);
+    if (recentQuestions.length > 10) recentQuestions.shift(); // 最多记10题
+}
 
 function askNew() {
     if (questionType === 'free' && aiConfig.apiKey) {
         const useKb = freeConstraint.includes('书') || freeConstraint.includes('知识库') || freeConstraint.includes('教材');
         const thinkQ = addMsg('出题中…', 'master');
-        callLLMQuestion(freeConstraint || '出一道乐理题', useKb).then(q => {
+        callLLMQuestion(freeConstraint || '出一道乐理题', useKb, recentQuestions).then(q => {
             thinkQ.remove();
             if (q && q.question) {
-                // 防重复
-                let attempts = 0;
-                const tryAsk = (qq) => {
-                    if (qq.question === lastQuestionText && attempts < 3) {
-                        attempts++;
-                        callLLMQuestion(freeConstraint || '出一道乐理题，不要和上题重复', useKb).then(tryAsk);
-                        return;
-                    }
-                    currentQuestion = { question: qq.question, answer: qq.answer, answerType: qq.type || 'note' };
-                    lastQuestionText = qq.question;
-                    addMsg(qq.question, 'master');
-                };
-                tryAsk(q);
+                currentQuestion = { question: q.question, answer: q.answer, answerType: q.type || 'note' };
+                lastQuestionText = q.question;
+                addToRecentQuestions(q.question);
+                addMsg(q.question, 'master');
             } else {
                 addMsg('出题失败，请重试。', 'master');
             }
         });
     } else {
-        addMsg(generateQuestion(), 'master');
+        const q = generateQuestion();
+        addToRecentQuestions(q);
+        addMsg(q, 'master');
     }
 }
 
