@@ -244,7 +244,7 @@ window.addEventListener('load', () => {
 window.addEventListener('resize', setBottomPadding);
 
 // ═══════════════════════════════════════════
-//  乐理知识库
+//  乐理数据
 // ═══════════════════════════════════════════
 const CHROMATIC = ['C','#C','D','#D','E','F','#F','G','#G','A','#A','B'];
 const SOLMIZATION_TO_NOTE = {
@@ -433,7 +433,7 @@ function generateQuestion() {
 }
 
 // ═══════════════════════════════════════════
-//  AI 配置 + 知识库
+//  AI 配置
 // ═══════════════════════════════════════════
 let aiConfig;
 try {
@@ -446,57 +446,35 @@ try {
     aiConfig = { baseUrl: 'https://api.openai.com/v1', apiKey: '', model: 'gpt-4o-mini' };
 }
 
-// 知识库：用户粘贴的书本文字，存 localStorage
-let knowledgeBase = localStorage.getItem('knowledgeBase') || '';
-
 function saveAiConfig() {
     localStorage.setItem('aiConfig', JSON.stringify(aiConfig));
 }
 
 // ── AI 配置弹窗 ──
-function showAiConfigModal(tab='ai') {
+function showAiConfigModal() {
     const overlay = document.createElement('div');
     overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:1000;display:flex;align-items:center;justify-content:center;padding:20px;';
 
     const box = document.createElement('div');
-    box.style.cssText = 'background:#fff;border-radius:16px;padding:0;width:100%;max-width:420px;box-shadow:0 10px 40px rgba(0,0,0,.2);overflow:hidden;max-height:90vh;display:flex;flex-direction:column;';
+    box.style.cssText = 'background:#fff;border-radius:16px;padding:20px;width:100%;max-width:420px;box-shadow:0 10px 40px rgba(0,0,0,.2);overflow:hidden;max-height:90vh;display:flex;flex-direction:column;';
     box.innerHTML = `
-        <div style="display:flex;border-bottom:1px solid #e5e5ea;">
-            <button id="tabAi" style="flex:1;padding:13px;border:none;background:none;font-size:14px;font-weight:600;cursor:pointer;border-bottom:2px solid transparent;">⚙️ AI 配置</button>
-            <button id="tabKb" style="flex:1;padding:13px;border:none;background:none;font-size:14px;font-weight:600;cursor:pointer;border-bottom:2px solid transparent;">📚 知识库</button>
-        </div>
-
-        <div id="panelAi" style="padding:20px;overflow-y:auto;">
-            <p style="font-size:13px;color:#8e8e93;margin-bottom:14px;">配置后乐理大师就能听懂任何自然语言指令</p>
-            <label style="font-size:13px;color:#3c3c43;font-weight:500;">服务商预设</label>
-            <select id="aiPreset" style="width:100%;margin:6px 0 14px;padding:10px 12px;border:1.5px solid #e5e5ea;border-radius:10px;font-size:14px;background:#f9f9f9;outline:none;">
-                <option value="openai">OpenAI (api.openai.com)</option>
-                <option value="deepseek">DeepSeek (api.deepseek.com)</option>
-                <option value="qwen">通义千问 (dashscope)</option>
-                <option value="custom">自定义</option>
-            </select>
-            <label style="font-size:13px;color:#3c3c43;font-weight:500;">API Base URL</label>
-            <input id="aiBaseUrl" type="text" style="width:100%;margin:6px 0 14px;padding:10px 12px;border:1.5px solid #e5e5ea;border-radius:10px;font-size:14px;background:#f9f9f9;outline:none;" placeholder="https://api.openai.com/v1" />
-            <label style="font-size:13px;color:#3c3c43;font-weight:500;">API Key</label>
-            <input id="aiKey" type="password" style="width:100%;margin:6px 0 14px;padding:10px 12px;border:1.5px solid #e5e5ea;border-radius:10px;font-size:14px;background:#f9f9f9;outline:none;" placeholder="sk-..." />
-            <label style="font-size:13px;color:#3c3c43;font-weight:500;">模型</label>
-            <input id="aiModel" type="text" style="width:100%;margin:6px 0 20px;padding:10px 12px;border:1.5px solid #e5e5ea;border-radius:10px;font-size:14px;background:#f9f9f9;outline:none;" placeholder="gpt-4o-mini" />
-            <div style="display:flex;gap:10px;">
-                <button id="aiCancel" style="flex:1;padding:11px;border:1.5px solid #e5e5ea;border-radius:10px;background:#fff;font-size:15px;cursor:pointer;">取消</button>
-                <button id="aiSave" style="flex:2;padding:11px;border:none;border-radius:10px;background:#1c1c1e;color:#fff;font-size:15px;font-weight:600;cursor:pointer;">保存</button>
-            </div>
-        </div>
-
-        <div id="panelKb" style="padding:20px;overflow-y:auto;display:none;">
-            <p style="font-size:13px;color:#8e8e93;margin-bottom:8px;">把乐理书、教材文字粘贴进来，AI 会基于这些内容出题考你。支持任意格式的文字。</p>
-            <p style="font-size:12px;color:#aeaeb2;margin-bottom:10px;">提示：内容越具体，题目越精准。可分批添加。</p>
-            <textarea id="kbText" style="width:100%;height:200px;padding:10px 12px;border:1.5px solid #e5e5ea;border-radius:10px;font-size:14px;background:#f9f9f9;outline:none;resize:vertical;font-family:inherit;line-height:1.5;" placeholder="例如：大调音阶由全全半全全全半的音程关系构成…&#10;&#10;或者粘贴书本章节内容…"></textarea>
-            <div style="font-size:12px;color:#aeaeb2;margin:6px 0 14px;" id="kbCount"></div>
-            <div style="display:flex;gap:10px;">
-                <button id="kbClear" style="flex:1;padding:11px;border:1.5px solid #ff3b30;border-radius:10px;background:#fff;font-size:14px;cursor:pointer;color:#ff3b30;">清空</button>
-                <button id="kbCancel" style="flex:1;padding:11px;border:1.5px solid #e5e5ea;border-radius:10px;background:#fff;font-size:15px;cursor:pointer;">取消</button>
-                <button id="kbSave" style="flex:2;padding:11px;border:none;border-radius:10px;background:#1c1c1e;color:#fff;font-size:15px;font-weight:600;cursor:pointer;">保存</button>
-            </div>
+        <p style="font-size:13px;color:#8e8e93;margin-bottom:14px;">配置后乐理大师就能听懂任何自然语言指令</p>
+        <label style="font-size:13px;color:#3c3c43;font-weight:500;">服务商预设</label>
+        <select id="aiPreset" style="width:100%;margin:6px 0 14px;padding:10px 12px;border:1.5px solid #e5e5ea;border-radius:10px;font-size:14px;background:#f9f9f9;outline:none;">
+            <option value="openai">OpenAI (api.openai.com)</option>
+            <option value="deepseek">DeepSeek (api.deepseek.com)</option>
+            <option value="qwen">通义千问 (dashscope)</option>
+            <option value="custom">自定义</option>
+        </select>
+        <label style="font-size:13px;color:#3c3c43;font-weight:500;">API Base URL</label>
+        <input id="aiBaseUrl" type="text" style="width:100%;margin:6px 0 14px;padding:10px 12px;border:1.5px solid #e5e5ea;border-radius:10px;font-size:14px;background:#f9f9f9;outline:none;" placeholder="https://api.openai.com/v1" />
+        <label style="font-size:13px;color:#3c3c43;font-weight:500;">API Key</label>
+        <input id="aiKey" type="password" style="width:100%;margin:6px 0 14px;padding:10px 12px;border:1.5px solid #e5e5ea;border-radius:10px;font-size:14px;background:#f9f9f9;outline:none;" placeholder="sk-..." />
+        <label style="font-size:13px;color:#3c3c43;font-weight:500;">模型</label>
+        <input id="aiModel" type="text" style="width:100%;margin:6px 0 20px;padding:10px 12px;border:1.5px solid #e5e5ea;border-radius:10px;font-size:14px;background:#f9f9f9;outline:none;" placeholder="gpt-4o-mini" />
+        <div style="display:flex;gap:10px;">
+            <button id="aiCancel" style="flex:1;padding:11px;border:1.5px solid #e5e5ea;border-radius:10px;background:#fff;font-size:15px;cursor:pointer;">取消</button>
+            <button id="aiSave" style="flex:2;padding:11px;border:none;border-radius:10px;background:#1c1c1e;color:#fff;font-size:15px;font-weight:600;cursor:pointer;">保存</button>
         </div>
     `;
 
@@ -504,27 +482,6 @@ function showAiConfigModal(tab='ai') {
     box.querySelector('#aiBaseUrl').value = aiConfig.baseUrl || '';
     box.querySelector('#aiKey').value     = aiConfig.apiKey  || '';
     box.querySelector('#aiModel').value   = aiConfig.model   || '';
-    const kbTextEl = box.querySelector('#kbText');
-    kbTextEl.value = knowledgeBase;
-    const kbCountEl = box.querySelector('#kbCount');
-    const updateKbCount = () => { kbCountEl.textContent = kbTextEl.value.length > 0 ? `已有 ${kbTextEl.value.length} 字` : ''; };
-    updateKbCount();
-    kbTextEl.addEventListener('input', updateKbCount);
-
-    // 标签切换
-    const tabAi = box.querySelector('#tabAi');
-    const tabKb = box.querySelector('#tabKb');
-    const panelAi = box.querySelector('#panelAi');
-    const panelKb = box.querySelector('#panelKb');
-    function switchTab(t) {
-        tabAi.style.borderBottomColor = t==='ai' ? '#1c1c1e' : 'transparent';
-        tabKb.style.borderBottomColor = t==='kb' ? '#1c1c1e' : 'transparent';
-        panelAi.style.display = t==='ai' ? '' : 'none';
-        panelKb.style.display = t==='kb' ? '' : 'none';
-    }
-    tabAi.addEventListener('click', () => switchTab('ai'));
-    tabKb.addEventListener('click', () => switchTab('kb'));
-    switchTab(tab);
 
     const presets = {
         openai:   { url: 'https://api.openai.com/v1',                         model: 'gpt-4o-mini' },
@@ -557,19 +514,6 @@ function showAiConfigModal(tab='ai') {
         addMsg('✅ AI 配置已保存！', 'master');
     });
 
-    box.querySelector('#kbCancel').addEventListener('click', () => overlay.remove());
-    box.querySelector('#kbClear').addEventListener('click', () => {
-        if (confirm('清空知识库？')) { kbTextEl.value = ''; updateKbCount(); }
-    });
-    box.querySelector('#kbSave').addEventListener('click', () => {
-        knowledgeBase = kbTextEl.value.trim();
-        localStorage.setItem('knowledgeBase', knowledgeBase);
-        overlay.remove();
-        const hint = knowledgeBase.length > 0
-            ? `📚 知识库已保存（${knowledgeBase.length}字）。现在可以说「根据书本内容考我」或「出书里的题」！`
-            : '知识库已清空。';
-        addMsg(hint, 'master');
-    });
 }
 
 // ═══════════════════════════════════════════
@@ -621,7 +565,6 @@ const INTENT_SYSTEM_PROMPT = `你是乐理大师App的意图解析器。用户�
 {"type":"help"}
 {"type":"answer"}
 {"type":"freeQuestion","constraint":"只考上行音程，限纯四度和纯五度"}
-{"type":"bookQuestion","topic":"从知识库里出一道关于调式的题"}
 {"type":"unknown","reply":"..."}
 
 规则（结合对话历史和当前状态综合判断）：
@@ -634,39 +577,27 @@ const INTENT_SYSTEM_PROMPT = `你是乐理大师App的意图解析器。用户�
 - "随机出题""什么都行" → qtype:all
 - "简单一点""加难""难度3" → difficulty/difficultyDelta
 - "只考上行""只出纯四度和纯五度""考我挂留和弦""出C大调的属七和弦题" 等有特殊约束但不在标准指令里的 → freeQuestion，constraint字段描述约束
-- "根据书本内容考我""出书里的题""按教材考我" → bookQuestion
 - 用户输入看起来是音名答案 → answer
 - 闲聊/问候 → unknown，reply里简短回复`;
 
-// ── LLM 生成题目（自由约束 + 书本题）──
+// ── LLM 生成题目（自由约束）──
 const QUESTION_SYSTEM_PROMPT = `你是一个专业乐理老师，负责出题考学生。
 
 出题要求：
 1. 出一道单选或填空乐理题，题目要清晰、准确
-2. 必须返回JSON格式：{"question":"题目内容","answer":"正确答案","type":"note|text"}
-   - type="note" 表示答案是音名（如 C、#F、G A B 等），系统会自动判题
-   - type="text" 表示答案是文字描述，需要AI判题
+2. 必须返回JSON格式：{"question":"题目内容","answer":"正确答案"}
 3. 答案必须准确，不能有歧义
 4. 每次出不同的题，不要重复
 
 音名格式：C #C D #D E F #F G #G A #A B（用#表示升，b表示降）`;
 
-async function callLLMQuestion(constraint, useKnowledge=false, avoidQuestions=[]) {
+async function callLLMQuestion(constraint, avoidQuestions=[]) {
     if (!aiConfig.apiKey) return null;
     try {
-        let userPrompt = constraint;
-
-        // 拼"已出过的题，不要重复"
         const avoidHint = avoidQuestions.length > 0
             ? `\n\n注意：以下题目已经出过，不要重复类似的题：\n${avoidQuestions.map((q,i)=>`${i+1}. ${q}`).join('\n')}`
             : '';
-
-        if (useKnowledge && knowledgeBase.length > 0) {
-            const kb = knowledgeBase.length > 4000 ? knowledgeBase.slice(0, 4000) + '…（已截断）' : knowledgeBase;
-            userPrompt = `根据以下乐理知识出一道题：\n\n${kb}\n\n要求：${constraint || '从中选择一个知识点出题'}${avoidHint}`;
-        } else {
-            userPrompt = constraint + avoidHint;
-        }
+        const userPrompt = constraint + avoidHint;
         const resp = await fetch(`${aiConfig.baseUrl}/chat/completions`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${aiConfig.apiKey}` },
@@ -687,32 +618,6 @@ async function callLLMQuestion(constraint, useKnowledge=false, avoidQuestions=[]
         const jsonMatch = content.match(/\{[\s\S]*\}/);
         if (!jsonMatch) return null;
         return JSON.parse(jsonMatch[0]);
-    } catch(e) { return null; }
-}
-
-// ── LLM 判题（用于 type="text" 的书本题）──
-async function judgeAnswerLLM(question, correctAnswer, userAnswer) {
-    if (!aiConfig.apiKey) return null;
-    try {
-        const resp = await fetch(`${aiConfig.baseUrl}/chat/completions`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${aiConfig.apiKey}` },
-            body: JSON.stringify({
-                model: aiConfig.model,
-                messages: [{
-                    role: 'user',
-                    content: `题目：${question}\n标准答案：${correctAnswer}\n学生回答：${userAnswer}\n\n请判断学生回答是否正确（意思相近即可），返回JSON：{"correct":true/false,"comment":"简短点评（20字内）"}`
-                }],
-                max_tokens: 100,
-                temperature: 0
-            })
-        });
-        if (!resp.ok) return null;
-        const data = await resp.json();
-        const content = data.choices?.[0]?.message?.content?.trim();
-        const m = content?.match(/\{[\s\S]*\}/);
-        if (!m) return null;
-        return JSON.parse(m[0]);
     } catch(e) { return null; }
 }
 
@@ -846,33 +751,13 @@ function handleIntent(intent) {
         case 'freeQuestion': {
             if (!aiConfig.apiKey) { addMsg('需要配置 AI Key 才能出自由题型。', 'master'); return true; }
             questionType = 'free'; lockedScales = []; lockedChord = null;
-            freeConstraint = intent.constraint || '出一道乐理题';
-            recentQuestions = []; // 新约束重置历史
+            freeConstraint = intent.constraint || intent.topic || '出一道乐理题';
+            recentQuestions = [];
             const thinkQ = addMsg('正在出题…', 'master');
-            callLLMQuestion(freeConstraint, false, recentQuestions).then(q => {
+            callLLMQuestion(freeConstraint, recentQuestions).then(q => {
                 thinkQ.remove();
                 if (q && q.question) {
-                    currentQuestion = { question: q.question, answer: q.answer, answerType: q.type || 'note' };
-                    lastQuestionText = q.question;
-                    addToRecentQuestions(q.question);
-                    addMsg(q.question, 'master');
-                } else {
-                    addMsg('出题失败，请重试。', 'master');
-                }
-            });
-            return true;
-        }
-        case 'bookQuestion': {
-            if (!aiConfig.apiKey) { addMsg('需要配置 AI Key 才能使用知识库出题。', 'master'); return true; }
-            if (!knowledgeBase) { addMsg('📚 知识库还是空的，点右上角 ⚙️ → 知识库 粘贴书本内容。', 'master'); return true; }
-            questionType = 'free'; lockedScales = []; lockedChord = null;
-            freeConstraint = '书本题：' + (intent.topic || '');
-            recentQuestions = []; // 新约束重置历史
-            const thinkB = addMsg('正在从知识库出题…', 'master');
-            callLLMQuestion(intent.topic || '', true, recentQuestions).then(q => {
-                thinkB.remove();
-                if (q && q.question) {
-                    currentQuestion = { question: q.question, answer: q.answer, answerType: q.type || 'text' };
+                    currentQuestion = { question: q.question, answer: q.answer, answerType: 'note' };
                     lastQuestionText = q.question;
                     addToRecentQuestions(q.question);
                     addMsg(q.question, 'master');
@@ -963,9 +848,8 @@ function addToRecentQuestions(q) {
 
 function askNew() {
     if (questionType === 'free' && aiConfig.apiKey) {
-        const useKb = freeConstraint.includes('书') || freeConstraint.includes('知识库') || freeConstraint.includes('教材');
         const thinkQ = addMsg('出题中…', 'master');
-        callLLMQuestion(freeConstraint || '出一道乐理题', useKb, recentQuestions).then(q => {
+        callLLMQuestion(freeConstraint || '出一道乐理题', recentQuestions).then(q => {
             thinkQ.remove();
             if (q && q.question) {
                 currentQuestion = { question: q.question, answer: q.answer, answerType: q.type || 'note' };
@@ -1036,31 +920,6 @@ async function processInput(text) {
 
 function judgeAnswer(text) {
     if (!currentQuestion) return;
-
-    // 书本题 / 文字答案 → 用 LLM 判题
-    if (currentQuestion.answerType === 'text') {
-        const thinkJ = addMsg('评判中…', 'master');
-        judgeAnswerLLM(currentQuestion.question, currentQuestion.answer, text).then(result => {
-            thinkJ.remove();
-            if (result) {
-                if (result.correct) {
-                    stats.correct++;
-                    addMsg(`✓ 正确！${result.comment || ''}`, 'correct');
-                } else {
-                    stats.incorrect++;
-                    addMsg(`✗ ${result.comment || ''} 参考答案：${currentQuestion.answer}`, 'incorrect');
-                }
-            } else {
-                // LLM 判题失败，fallback 到字符串比较
-                const ok = text.trim() === currentQuestion.answer.trim();
-                if (ok) { stats.correct++; addMsg('✓ 正确！', 'correct'); }
-                else { stats.incorrect++; addMsg(`✗ 参考答案：${currentQuestion.answer}`, 'incorrect'); }
-            }
-            updateStats();
-            setTimeout(askNew, 900);
-        });
-        return;
-    }
 
     // 标准音名题 → 本地判题
     if (checkAnswer(text)) {
