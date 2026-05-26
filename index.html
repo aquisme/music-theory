@@ -196,8 +196,7 @@
 
         /* 指板容器 */
         .fretboard-wrap {
-            overflow-x: auto;
-            -webkit-overflow-scrolling: touch;
+            overflow: hidden;
             padding: 0 12px;
         }
         #fretCanvas {
@@ -1474,36 +1473,95 @@ function initFretboard() {
     canvas.addEventListener('click', onCanvasClick);
 
     setFretboardMode('free');
+
+    // 窗口 resize 时重建指板（适配宽度）
+    let resizeTimer;
+    window.addEventListener('resize', () => {
+        clearTimeout(resizeTimer);
+        resizeTimer = setTimeout(() => {
+            buildFretboard();
+        }, 200);
+    });
 }
 
 // ── Canvas 指板核心参数 ──
+// 真实吉他品格比例：第 f 品的宽度 ∝ scale_length × (2^(-f/12) - 2^(-(f+1)/12))
+// 以第1品宽度为基准，每品宽度 = 前一品 × 2^(-1/12)
+const FRET_RATIO = Math.pow(2, -1/12); // ≈ 0.9439
+
+// 计算各品的相对宽度（归一化，总和=1）
+function computeFretWidths(count) {
+    const widths = [];
+    let w = 1;
+    for (let f = 1; f <= count; f++) {
+        widths.push(w);
+        w *= FRET_RATIO;
+    }
+    const total = widths.reduce((a, b) => a + b, 0);
+    return widths.map(x => x / total); // 归一化
+}
+
 const FB = {
-    nutW: 34,       // 弦名区宽度
-    fretW: 52,      // 每品宽度
-    strH: 42,       // 每弦高度
+    nutW: 38,       // 弦名区宽度（含空弦点击区）
+    strH: 44,       // 每弦高度
     numH: 22,       // 品格编号行高
-    dotH: 18,       // 标记点行高
+    dotH: 20,       // 标记点行高
     dotR: 7,        // 标记圆半径
     noteR: 13,      // 音名圆半径
-    get totalW() { return this.nutW + this.fretW * (FRET_COUNT + 1); },
+    // 品格绝对宽度数组（在 buildFretboard 时按容器宽度计算）
+    _fretWidths: [],  // 长度 FRET_COUNT，索引0对应第1品
+    _fretX: [],       // 每品左边 x（从 nutW 开始）
+    _boardW: 0,       // 指板宽度（不含弦名区）
+    get totalW() { return this.nutW + this._boardW; },
     get totalH() { return this.numH + 6 * this.strH + this.dotH; },
     get boardTop() { return this.numH; },
     get boardBot() { return this.numH + 6 * this.strH; },
     get dotRowTop() { return this.numH + 6 * this.strH; },
-    // 品格 f 的中心 x（f=0 是空弦区）
-    fretCX(f) { return this.nutW + f * this.fretW + this.fretW / 2; },
+    // 第 f 品（1-indexed）的中心 x
+    fretCX(f) {
+        if (f < 1 || f > FRET_COUNT) return this.nutW;
+        return this.nutW + this._fretX[f-1] + this._fretWidths[f-1] / 2;
+    },
+    // 第 f 品左边界 x
+    fretLeft(f) { return f < 1 ? 0 : this.nutW + this._fretX[f-1]; },
     // 弦 s（0=低E, 5=高E）的中心 y（视觉上高E在上）
     strCY(s) { return this.boardTop + (5 - s) * this.strH + this.strH / 2; },
+    // 根据 x 坐标找品格（返回 1-based fret，0=空弦区）
+    xToFret(x) {
+        if (x < this.nutW) return 0; // 空弦区
+        const bx = x - this.nutW;
+        for (let f = 1; f <= FRET_COUNT; f++) {
+            if (bx < this._fretX[f-1] + this._fretWidths[f-1]) return f;
+        }
+        return FRET_COUNT;
+    },
 };
+
+function initFBLayout() {
+    // 获取容器宽度，适配屏幕
+    const wrap = document.querySelector('.fretboard-wrap');
+    const availW = (wrap ? wrap.clientWidth : window.innerWidth) - 24; // 24 = padding
+    FB._boardW = Math.max(availW - FB.nutW, 400);
+    const relWidths = computeFretWidths(FRET_COUNT);
+    FB._fretWidths = relWidths.map(r => r * FB._boardW);
+    FB._fretX = [];
+    let x = 0;
+    for (let f = 0; f < FRET_COUNT; f++) {
+        FB._fretX.push(x);
+        x += FB._fretWidths[f];
+    }
+    FB._boardW = x; // 实际总宽（浮点累加）
+}
 
 const DPR = window.devicePixelRatio || 1;
 
 function buildFretboard() {
+    initFBLayout();
     const canvas = document.getElementById('fretCanvas');
-    canvas.width  = FB.totalW * DPR;
-    canvas.height = FB.totalH * DPR;
-    canvas.style.width  = FB.totalW + 'px';
-    canvas.style.height = FB.totalH + 'px';
+    canvas.width  = Math.round(FB.totalW * DPR);
+    canvas.height = Math.round(FB.totalH * DPR);
+    canvas.style.width  = Math.round(FB.totalW) + 'px';
+    canvas.style.height = Math.round(FB.totalH) + 'px';
     const ctx = canvas.getContext('2d');
     ctx.scale(DPR, DPR);
     drawFretboard();
@@ -1518,7 +1576,7 @@ function drawFretboard() {
     ctx.clearRect(0, 0, FB.totalW, FB.totalH);
 
     // ── 品格编号行（上方） ──
-    ctx.font = '11px -apple-system, sans-serif';
+    ctx.font = '10px -apple-system, sans-serif';
     ctx.fillStyle = '#8e8e93';
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
@@ -1526,78 +1584,74 @@ function drawFretboard() {
         ctx.fillText(String(f), FB.fretCX(f), FB.numH / 2);
     }
 
-    // ── 指板底色 ──
-    // 渐变木纹感
+    // ── 指板底色（木纹渐变） ──
     const grad = ctx.createLinearGradient(FB.nutW, 0, FB.totalW, 0);
     grad.addColorStop(0,   '#6b4423');
     grad.addColorStop(0.5, '#5c3d1e');
     grad.addColorStop(1,   '#4a2f15');
     ctx.fillStyle = grad;
     ctx.beginPath();
-    ctx.roundRect(FB.nutW, FB.boardTop, FB.totalW - FB.nutW, 6 * FB.strH, [4, 4, 0, 0]);
+    ctx.roundRect(FB.nutW, FB.boardTop, FB._boardW, 6 * FB.strH, [0, 4, 4, 0]);
     ctx.fill();
 
-    // ── 弦名区（左侧） ──
+    // ── 弦名区（左侧，含空弦点击区） ──
     ctx.fillStyle = '#3a2510';
     ctx.fillRect(0, FB.boardTop, FB.nutW, 6 * FB.strH);
 
     // 枕（nut）竖线
     ctx.strokeStyle = '#e8d09a';
-    ctx.lineWidth = 4;
+    ctx.lineWidth = 5;
+    ctx.lineCap = 'butt';
     ctx.beginPath();
     ctx.moveTo(FB.nutW, FB.boardTop);
     ctx.lineTo(FB.nutW, FB.boardBot);
     ctx.stroke();
 
-    // ── 品格竖线 ──
-    ctx.lineWidth = 1.5;
+    // ── 品格竖线（变宽） ──
     for (let f = 1; f <= FRET_COUNT; f++) {
-        const x = FB.nutW + f * FB.fretW;
-        // 品格金属光泽
-        const lg = ctx.createLinearGradient(x - 1, 0, x + 1, 0);
-        lg.addColorStop(0, '#b8860b');
-        lg.addColorStop(0.5, '#f0d080');
-        lg.addColorStop(1, '#b8860b');
+        const x = FB.nutW + FB._fretX[f-1] + FB._fretWidths[f-1]; // 右边界
+        const lg = ctx.createLinearGradient(x - 1, 0, x + 2, 0);
+        lg.addColorStop(0, '#9a7010');
+        lg.addColorStop(0.4, '#f0d080');
+        lg.addColorStop(1, '#9a7010');
         ctx.strokeStyle = lg;
-        ctx.lineWidth = 2.5;
+        ctx.lineWidth = 2;
         ctx.beginPath();
-        ctx.moveTo(x, FB.boardTop + 2);
-        ctx.lineTo(x, FB.boardBot - 2);
+        ctx.moveTo(x, FB.boardTop + 1);
+        ctx.lineTo(x, FB.boardBot - 1);
         ctx.stroke();
     }
 
     // ── 弦线 ──
-    const stringThickness = [3, 2.4, 2.0, 1.5, 1.1, 0.8]; // 低E→高E
+    const stringThickness = [3.2, 2.6, 2.1, 1.5, 1.0, 0.7]; // 低E→高E
     for (let s = 0; s <= 5; s++) {
         const y = FB.strCY(s);
         const thick = stringThickness[s];
-        const sg = ctx.createLinearGradient(FB.nutW, y - thick, FB.nutW, y + thick);
-        sg.addColorStop(0, 'rgba(255,240,180,0.5)');
-        sg.addColorStop(0.4, 'rgba(220,200,140,0.9)');
-        sg.addColorStop(1, 'rgba(180,160,100,0.6)');
+        const sg = ctx.createLinearGradient(0, y - thick, 0, y + thick);
+        sg.addColorStop(0, 'rgba(255,240,180,0.45)');
+        sg.addColorStop(0.4, 'rgba(220,200,140,0.92)');
+        sg.addColorStop(1, 'rgba(180,160,100,0.55)');
         ctx.strokeStyle = sg;
         ctx.lineWidth = thick;
         ctx.beginPath();
-        ctx.moveTo(FB.nutW, y);
+        ctx.moveTo(0, y);      // 从弦名区起始（含空弦）
         ctx.lineTo(FB.totalW, y);
         ctx.stroke();
     }
 
-    // ── 弦名 ──
+    // ── 弦名（左侧，可点击触发空弦音） ──
     ctx.font = 'bold 11px -apple-system, sans-serif';
     ctx.fillStyle = '#ffe0a0';
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
-    // 视觉顺序：高E(5)在上，低E(0)在下
-    const nameOrder = ['e','B','G','D','A','E']; // 从上到下
+    const nameOrder = ['e','B','G','D','A','E']; // 从上到下（高E→低E）
     for (let row = 0; row < 6; row++) {
         const y = FB.boardTop + row * FB.strH + FB.strH / 2;
         ctx.fillText(nameOrder[row], FB.nutW / 2, y);
     }
 
     // ── 指板标记点行（下方） ──
-    // 品格标记行背景
-    ctx.fillStyle = '#3a2510';
+    ctx.fillStyle = '#2e1e0a';
     ctx.fillRect(0, FB.dotRowTop, FB.totalW, FB.dotH);
 
     const MARKER_FRETS_SINGLE = [3, 5, 7, 9, 15];
@@ -1606,27 +1660,18 @@ function drawFretboard() {
     ctx.fillStyle = '#c8a96e';
     for (const f of MARKER_FRETS_SINGLE) {
         if (f > FRET_COUNT) continue;
-        const cx = FB.fretCX(f);
-        const cy = FB.dotRowTop + FB.dotH / 2;
         ctx.beginPath();
-        ctx.arc(cx, cy, FB.dotR, 0, Math.PI * 2);
+        ctx.arc(FB.fretCX(f), FB.dotRowTop + FB.dotH / 2, FB.dotR, 0, Math.PI * 2);
         ctx.fill();
     }
     for (const f of MARKER_FRETS_DOUBLE) {
         if (f > FRET_COUNT) continue;
         const cx = FB.fretCX(f);
         const cy = FB.dotRowTop + FB.dotH / 2;
-        ctx.beginPath(); ctx.arc(cx - FB.dotR * 1.5, cy, FB.dotR * 0.85, 0, Math.PI * 2); ctx.fill();
-        ctx.beginPath(); ctx.arc(cx + FB.dotR * 1.5, cy, FB.dotR * 0.85, 0, Math.PI * 2); ctx.fill();
+        const gap = FB.dotR * 1.4;
+        ctx.beginPath(); ctx.arc(cx - gap, cy, FB.dotR * 0.82, 0, Math.PI * 2); ctx.fill();
+        ctx.beginPath(); ctx.arc(cx + gap, cy, FB.dotR * 0.82, 0, Math.PI * 2); ctx.fill();
     }
-
-    // ── 空弦区竖线 ──
-    ctx.strokeStyle = 'rgba(200,160,80,0.3)';
-    ctx.lineWidth = 1;
-    ctx.beginPath();
-    ctx.moveTo(FB.nutW + FB.fretW, FB.boardTop);
-    ctx.lineTo(FB.nutW + FB.fretW, FB.boardBot);
-    ctx.stroke();
 
     // ── 音名标注圆点 ──
     drawNoteDots(ctx);
@@ -1667,7 +1712,8 @@ const DOT_COLORS = {
 };
 
 function drawSingleDot(ctx, s, f, label, colorKey) {
-    const cx = FB.fretCX(f);
+    // f=0 空弦：显示在弦名区中心
+    const cx = f === 0 ? FB.nutW / 2 : FB.fretCX(f);
     const cy = FB.strCY(s);
     const c  = DOT_COLORS[colorKey] || DOT_COLORS.free;
 
@@ -1718,26 +1764,27 @@ function addNoteDot(cell, name, cls) {}     // Canvas 模式下不用（兼容�
 function onCanvasClick(e) {
     const canvas = document.getElementById('fretCanvas');
     const rect = canvas.getBoundingClientRect();
-    const x = e.clientX - rect.left;
-    const y = e.clientY - rect.top;
+    // 映射到 CSS 像素坐标（canvas 可能被 DPR 缩放，但 style 宽高是 CSS 像素）
+    const scaleX = FB.totalW / rect.width;
+    const scaleY = FB.totalH / rect.height;
+    const x = (e.clientX - rect.left) * scaleX;
+    const y = (e.clientY - rect.top)  * scaleY;
 
-    // 判断点击在哪个品格/弦
+    // 判断在指板行内
     if (y < FB.boardTop || y > FB.boardBot) return;
 
-    const col = Math.floor((x - FB.nutW) / FB.fretW); // 0=空弦, 1..N
-    const f = col;
-    if (f < 0 || f > FRET_COUNT) return;
+    const row = Math.floor((y - FB.boardTop) / FB.strH);
+    const s = 5 - row; // 0=低E, 5=高E
 
-    const row = Math.floor((y - FB.boardTop) / FB.strH); // 0=高E(s=5) .. 5=低E(s=0)
-    const s = 5 - row;
+    // 判断品格（0=空弦区，即左侧弦名区）
+    const f = x < FB.nutW ? 0 : FB.xToFret(x);
+    if (f < 0 || f > FRET_COUNT) return;
 
     // 播放音频
     playGuitarNote(fretMidi(s, f));
 
     if (fretMode === 'free') {
         if (!showAllNames) {
-            // 临时显示这个格子的音名，1s 后消失
-            // 清除上一个临时标记
             if (window._fretTempTimer) clearTimeout(window._fretTempTimer);
             if (window._fretTempKey) delete fretDotData[window._fretTempKey];
 
