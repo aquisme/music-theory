@@ -1588,16 +1588,7 @@ function initFBLayout() {
         x += FB._fretWidths[f];
     }
     FB._boardW = x;
-
-    // 计算可用高度：窗口高度 - 顶栏 - 控件区（不含 wrap 本身）
-    const topBar  = document.getElementById('fretTopBar');
-    const controls = document.querySelector('#fretboardView .fret-controls');
-    const topH = topBar    ? topBar.offsetHeight    : 50;
-    const ctrlH = controls ? controls.offsetHeight  : 80;
-    const wrapH = window.innerHeight - topH - ctrlH - 16; // 16 = padding bottom
-
-    const calcStrH = Math.floor((wrapH - FB.numH - FB.dotH) / 6);
-    FB.strH = Math.max(28, Math.min(160, calcStrH));
+    FB.strH = 55;
 }
 
 const DPR = window.devicePixelRatio || 1;
