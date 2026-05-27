@@ -1594,7 +1594,7 @@ function initFBLayout() {
     // 读取 .fretboard-wrap 的实际高度（CSS flex:1 已经分配好了）
     const wrap = document.querySelector('.fretboard-wrap');
     const wrapH = wrap ? wrap.clientHeight : window.innerHeight * 0.6;
-    const calcStrH = Math.floor((wrapH - FB.numH - FB.dotH - 8) / 6);
+    const calcStrH = Math.floor((wrapH - FB.numH - FB.dotH) / 6);
     FB.strH = Math.max(28, Math.min(120, calcStrH));
 }
 
