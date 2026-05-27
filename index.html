@@ -184,20 +184,48 @@
         }
         .mode-tab.active { color: #1c1c1e; border-bottom-color: #1c1c1e; }
 
-        /* ─── 指板视图 ─── */
+        /* ─── 指板视图（全屏覆盖） ─── */
         #fretboardView {
-            flex: 1; overflow-y: auto;
             display: none; flex-direction: column;
-            background: #f2f2f7; padding: 12px 0 80px;
-            gap: 10px;
+            position: fixed;
+            top: 0; left: 0; right: 0; bottom: 0;
+            z-index: 100;
+            background: #f2f2f7;
+            overflow: hidden;
         }
         #fretboardView.active { display: flex; }
         #chatView.hidden { display: none; }
+
+        /* 指板全屏内的顶栏（复用 header 样式） */
+        #fretTopBar {
+            flex-shrink: 0;
+            display: flex; align-items: center;
+            padding: 10px 16px 0;
+            background: #fff;
+            border-bottom: 0.5px solid #e5e5ea;
+            gap: 0;
+        }
+        #fretBackBtn {
+            border: none; background: none;
+            font-size: 14px; color: #007aff;
+            cursor: pointer; padding: 6px 10px 6px 0;
+            font-weight: 500; white-space: nowrap;
+        }
+        #fretTopBar .fret-mode-bar {
+            flex: 1; overflow-x: auto;
+            -webkit-overflow-scrolling: touch;
+            padding-bottom: 8px;
+            display: flex; gap: 6px;
+        }
+        #fretTopBar .fret-mode-bar::-webkit-scrollbar { display: none; }
 
         /* 指板容器 */
         .fretboard-wrap {
             overflow: hidden;
             padding: 0 12px;
+            flex: 1;
+            display: flex;
+            align-items: flex-start;
         }
         #fretCanvas {
             display: block;
@@ -209,7 +237,12 @@
 
         /* 指板控制面板 */
         .fret-controls {
-            padding: 0 12px; display: flex; flex-direction: column; gap: 8px;
+            padding: 6px 12px; display: flex; flex-direction: column; gap: 6px;
+            flex-shrink: 0;
+        }
+        /* 题目卡 + 操作按钮横排 */
+        .fret-card-row {
+            display: flex; gap: 8px; align-items: center;
         }
         .fret-mode-bar {
             display: flex; gap: 6px; flex-wrap: wrap;
@@ -225,23 +258,24 @@
         }
         /* 题目/状态卡 */
         .fret-question-card {
-            background: #fff; border-radius: 12px;
-            padding: 12px 14px;
+            background: #fff; border-radius: 10px;
+            padding: 8px 12px;
             box-shadow: 0 1px 4px rgba(0,0,0,.08);
-            font-size: 14px; line-height: 1.5;
+            font-size: 13px; line-height: 1.4;
+            flex: 1;
         }
-        .fret-question-card .q-title { font-weight: 600; margin-bottom: 4px; }
-        .fret-question-card .q-hint  { font-size: 12px; color: #8e8e93; }
-        .fret-question-card .q-result { font-weight: 600; margin-top: 6px; }
+        .fret-question-card .q-title { font-weight: 600; margin-bottom: 2px; }
+        .fret-question-card .q-hint  { font-size: 11px; color: #8e8e93; }
+        .fret-question-card .q-result { font-weight: 600; margin-top: 4px; font-size: 12px; }
         .fret-question-card .q-result.ok  { color: #34c759; }
         .fret-question-card .q-result.err { color: #ff3b30; }
 
         .fret-action-bar {
-            display: flex; gap: 8px;
+            display: flex; gap: 6px; align-items: center;
         }
         .fret-action-btn {
-            flex: 1; padding: 10px; border-radius: 10px;
-            border: none; font-size: 14px; font-weight: 600; cursor: pointer;
+            padding: 7px 14px; border-radius: 8px;
+            border: none; font-size: 13px; font-weight: 600; cursor: pointer; white-space: nowrap;
         }
         .fret-action-btn.primary { background: #1c1c1e; color: #fff; }
         .fret-action-btn.secondary { background: #e5e5ea; color: #1c1c1e; }
@@ -269,10 +303,11 @@
     <!-- 对话视图 -->
     <div class="chat-area" id="chatArea" style="display:flex;flex-direction:column;"></div>
 
-    <!-- 指板视图 -->
+    <!-- 指板视图（全屏覆盖） -->
     <div id="fretboardView">
-        <!-- 指板模式切换 -->
-        <div class="fret-controls">
+        <!-- 全屏顶栏 -->
+        <div id="fretTopBar">
+            <button id="fretBackBtn">← 返回</button>
             <div class="fret-mode-bar">
                 <button class="fret-mode-btn active" data-fmode="free">🎵 自由弹奏</button>
                 <button class="fret-mode-btn" data-fmode="note">🔍 认识音名</button>
@@ -280,6 +315,10 @@
                 <button class="fret-mode-btn" data-fmode="chord">🎸 和弦声部</button>
                 <button class="fret-mode-btn" data-fmode="custom">✏️ 自定义</button>
             </div>
+        </div>
+
+        <!-- 题目卡 + 操作栏 -->
+        <div class="fret-controls" style="padding:10px 16px 0;">
             <!-- 自定义出题输入区（默认隐藏） -->
             <div id="fretCustomInput" style="display:none;background:#fff;border-radius:12px;padding:10px 12px;box-shadow:0 1px 4px rgba(0,0,0,.08);">
                 <div style="font-size:13px;color:#3c3c43;font-weight:600;margin-bottom:6px;">说出你想练什么：</div>
@@ -289,14 +328,16 @@
                 </div>
                 <div style="font-size:11px;color:#aeaeb2;margin-top:5px;">支持：找出所有X音 · 找X和弦的组成音 · 找X大调第N级音</div>
             </div>
-            <div class="fret-question-card" id="fretCard">
-                <div class="q-title">自由弹奏模式</div>
-                <div class="q-hint">点击任意品格发音，长按显示/隐藏所有音名</div>
-            </div>
-            <div class="fret-action-bar" id="fretActionBar">
-                <button class="fret-action-btn secondary" id="fretToggleNames">显示音名</button>
-                <button class="fret-action-btn primary" id="fretNextQ" style="display:none">下一题</button>
-                <button class="fret-action-btn primary" id="fretSubmitCustom" style="display:none">提交判断</button>
+            <div class="fret-card-row">
+                <div class="fret-question-card" id="fretCard">
+                    <div class="q-title">自由弹奏模式</div>
+                    <div class="q-hint">点击任意品格发音，长按显示/隐藏所有音名</div>
+                </div>
+                <div class="fret-action-bar" id="fretActionBar">
+                    <button class="fret-action-btn secondary" id="fretToggleNames">显示音名</button>
+                    <button class="fret-action-btn primary" id="fretNextQ" style="display:none">下一题</button>
+                    <button class="fret-action-btn primary" id="fretSubmitCustom" style="display:none">提交判断</button>
+                </div>
             </div>
         </div>
 
@@ -1468,6 +1509,9 @@ function initFretboard() {
 
     document.getElementById('fretSubmitCustom').addEventListener('click', submitCustomFretAnswer);
 
+    // 返回按钮
+    document.getElementById('fretBackBtn').addEventListener('click', () => switchMainMode('chat'));
+
     // Canvas 点击
     const canvas = document.getElementById('fretCanvas');
     canvas.addEventListener('click', onCanvasClick);
@@ -1503,7 +1547,7 @@ function computeFretWidths(count) {
 
 const FB = {
     nutW: 38,       // 弦名区宽度（含空弦点击区）
-    strH: 44,       // 每弦高度
+    strH: 44,       // 每弦高度（动态计算后覆盖）
     numH: 22,       // 品格编号行高
     dotH: 20,       // 标记点行高
     dotR: 7,        // 标记圆半径
@@ -1538,10 +1582,9 @@ const FB = {
 };
 
 function initFBLayout() {
-    // 获取容器宽度，适配屏幕
-    const wrap = document.querySelector('.fretboard-wrap');
-    const availW = (wrap ? wrap.clientWidth : window.innerWidth) - 24; // 24 = padding
-    FB._boardW = Math.max(availW - FB.nutW, 400);
+    // 全屏模式下使用窗口宽度
+    const availW = window.innerWidth - 24; // 24 = 两侧各 12px padding
+    FB._boardW = Math.max(availW - FB.nutW, 300);
     const relWidths = computeFretWidths(FRET_COUNT);
     FB._fretWidths = relWidths.map(r => r * FB._boardW);
     FB._fretX = [];
@@ -1550,21 +1593,33 @@ function initFBLayout() {
         FB._fretX.push(x);
         x += FB._fretWidths[f];
     }
-    FB._boardW = x; // 实际总宽（浮点累加）
+    FB._boardW = x;
+
+    // 动态计算弦高：让指板填满剩余垂直空间
+    const controlsEl = document.querySelector('#fretboardView .fret-controls');
+    const topBarEl   = document.getElementById('fretTopBar');
+    const controlsH  = controlsEl ? controlsEl.offsetHeight : 0;
+    const topBarH    = topBarEl   ? topBarEl.offsetHeight   : 50;
+    const availH = window.innerHeight - topBarH - controlsH - 20; // 20 = 底部安全边距
+    const calcStrH = Math.floor((availH - FB.numH - FB.dotH) / 6);
+    FB.strH = Math.max(30, Math.min(80, calcStrH)); // 限制在 30~80px
 }
 
 const DPR = window.devicePixelRatio || 1;
 
 function buildFretboard() {
-    initFBLayout();
-    const canvas = document.getElementById('fretCanvas');
-    canvas.width  = Math.round(FB.totalW * DPR);
-    canvas.height = Math.round(FB.totalH * DPR);
-    canvas.style.width  = Math.round(FB.totalW) + 'px';
-    canvas.style.height = Math.round(FB.totalH) + 'px';
-    const ctx = canvas.getContext('2d');
-    ctx.scale(DPR, DPR);
-    drawFretboard();
+    // 用 rAF 确保 DOM 已 layout，才能正确读取控件高度
+    requestAnimationFrame(() => {
+        initFBLayout();
+        const canvas = document.getElementById('fretCanvas');
+        canvas.width  = Math.round(FB.totalW * DPR);
+        canvas.height = Math.round(FB.totalH * DPR);
+        canvas.style.width  = Math.round(FB.totalW) + 'px';
+        canvas.style.height = Math.round(FB.totalH) + 'px';
+        const ctx = canvas.getContext('2d');
+        ctx.setTransform(DPR, 0, 0, DPR, 0, 0);
+        drawFretboard();
+    });
 }
 
 // 所有标注数据（key="s-f" → {color, label}）
