@@ -1415,39 +1415,81 @@ function getAudioCtx() {
     return audioCtx;
 }
 
-// 模拟吉他音色（卡尔普斯-斯特朗算法）
-function playGuitarNote(midiNote, duration = 1.8) {
+// ── 吉他音色合成（改进版 Karplus-Strong + 体鸣模拟） ──
+function playGuitarNote(midiNote, duration = 3.0) {
     const ctx = getAudioCtx();
+    if (ctx.state === 'suspended') ctx.resume();
+
     const freq = 440 * Math.pow(2, (midiNote - 69) / 12);
-    const bufSize = Math.floor(ctx.sampleRate / freq);
-    const buf = ctx.createBuffer(1, bufSize, ctx.sampleRate);
+    const now = ctx.currentTime;
+
+    // ── 1. Karplus-Strong：用 AudioBuffer + BufferSource 循环模拟弦振 ──
+    const sampleRate = ctx.sampleRate;
+    const period = Math.round(sampleRate / freq);
+    const bufLen  = period * 4; // 足够长以减少混叠
+    const buf = ctx.createBuffer(1, bufLen, sampleRate);
     const data = buf.getChannelData(0);
-    for (let i = 0; i < bufSize; i++) data[i] = Math.random() * 2 - 1;
 
-    let y = new Float32Array(bufSize);
-    for (let i = 0; i < bufSize; i++) y[i] = data[i];
+    // 初始噪声（模拟拨弦瞬态）
+    for (let i = 0; i < bufLen; i++) {
+        data[i] = (Math.random() * 2 - 1) * (i < period ? 1 : 0);
+    }
 
-    const scriptNode = ctx.createScriptProcessor(2048, 0, 1);
-    let pos = 0;
-    scriptNode.onaudioprocess = (e) => {
-        const out = e.outputBuffer.getChannelData(0);
-        for (let i = 0; i < out.length; i++) {
-            out[i] = y[pos % bufSize];
-            y[pos % bufSize] = 0.996 * (y[pos % bufSize] + y[(pos + 1) % bufSize]) / 2;
-            pos++;
+    // Karplus-Strong 低通平均滤波（就地迭代）
+    const alpha = 0.5; // 亮度系数：越大越亮
+    for (let iter = 0; iter < 8; iter++) {
+        for (let i = 1; i < period; i++) {
+            data[i] = alpha * (data[i] + data[i - 1]) * 0.5 +
+                      (1 - alpha) * data[i];
         }
-    };
+    }
 
-    const gain = ctx.createGain();
-    gain.gain.setValueAtTime(0.5, ctx.currentTime);
-    gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + duration);
+    // ── 2. 主弦音源（循环播放 period 长度的 buffer） ──
+    const stringBuf = ctx.createBuffer(1, period, sampleRate);
+    stringBuf.copyToChannel(data.subarray(0, period), 0);
 
-    scriptNode.connect(gain);
-    gain.connect(ctx.destination);
+    const src = ctx.createBufferSource();
+    src.buffer = stringBuf;
+    src.loop = true;
 
-    setTimeout(() => {
-        try { scriptNode.disconnect(); gain.disconnect(); } catch(e) {}
-    }, duration * 1000 + 100);
+    // ── 3. 高频衰减滤波器（模拟弦衰减时泛音消逝） ──
+    const filter = ctx.createBiquadFilter();
+    filter.type = 'lowpass';
+    filter.frequency.setValueAtTime(4000 + freq * 2, now);
+    filter.frequency.exponentialRampToValueAtTime(800, now + duration * 0.8);
+    filter.Q.value = 0.5;
+
+    // ── 4. 体鸣（共鸣箱）模拟：短延迟 + 梳状滤波 ──
+    const bodyDelay = ctx.createDelay(0.05);
+    bodyDelay.delayTime.value = 0.002; // 2ms 反射
+    const bodyGain = ctx.createGain();
+    bodyGain.gain.value = 0.18;
+    const bodyFilter = ctx.createBiquadFilter();
+    bodyFilter.type = 'peaking';
+    bodyFilter.frequency.value = 200;
+    bodyFilter.gain.value = 4;
+    bodyFilter.Q.value = 1.5;
+
+    // ── 5. 总增益 + 自然衰减包络 ──
+    const masterGain = ctx.createGain();
+    const vel = 0.55;
+    masterGain.gain.setValueAtTime(vel, now);
+    masterGain.gain.setTargetAtTime(vel * 0.6, now + 0.02, 0.05);
+    masterGain.gain.exponentialRampToValueAtTime(0.001, now + duration);
+
+    // ── 6. 连线 ──
+    // 主路: src → filter → masterGain → dest
+    src.connect(filter);
+    filter.connect(masterGain);
+    // 体鸣支路: filter → bodyFilter → bodyDelay → bodyGain → masterGain
+    filter.connect(bodyFilter);
+    bodyFilter.connect(bodyDelay);
+    bodyDelay.connect(bodyGain);
+    bodyGain.connect(masterGain);
+    masterGain.connect(ctx.destination);
+
+    src.start(now);
+    src.stop(now + duration);
 }
 
 function switchMainMode(mode) {
