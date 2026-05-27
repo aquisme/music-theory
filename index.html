@@ -1583,7 +1583,7 @@ const FB = {
 
 function initFBLayout() {
     // 全屏模式下使用窗口宽度
-    const availW = window.innerWidth - 24; // 24 = 两侧各 12px padding
+    const availW = window.innerWidth - 24;
     FB._boardW = Math.max(availW - FB.nutW, 300);
     const relWidths = computeFretWidths(FRET_COUNT);
     FB._fretWidths = relWidths.map(r => r * FB._boardW);
@@ -1595,14 +1595,14 @@ function initFBLayout() {
     }
     FB._boardW = x;
 
-    // 动态计算弦高：让指板填满剩余垂直空间
+    // 动态计算弦高：用控件区底部到窗口底部的距离
     const controlsEl = document.querySelector('#fretboardView .fret-controls');
-    const topBarEl   = document.getElementById('fretTopBar');
-    const controlsH  = controlsEl ? controlsEl.offsetHeight : 0;
-    const topBarH    = topBarEl   ? topBarEl.offsetHeight   : 50;
-    const availH = window.innerHeight - topBarH - controlsH - 20; // 20 = 底部安全边距
+    const controlsBottom = controlsEl
+        ? controlsEl.getBoundingClientRect().bottom
+        : (document.getElementById('fretTopBar')?.offsetHeight || 50) + 120;
+    const availH = window.innerHeight - controlsBottom - 8;
     const calcStrH = Math.floor((availH - FB.numH - FB.dotH) / 6);
-    FB.strH = Math.max(30, Math.min(80, calcStrH)); // 限制在 30~80px
+    FB.strH = Math.max(28, Math.min(100, calcStrH));
 }
 
 const DPR = window.devicePixelRatio || 1;
