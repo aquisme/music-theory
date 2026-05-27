@@ -190,7 +190,7 @@
             position: fixed;
             top: 0; left: 0; right: 0; bottom: 0;
             z-index: 100;
-            background: #f2f2f7;
+            background: #111;
             overflow: hidden;
         }
         #fretboardView.active { display: flex; }
@@ -201,12 +201,12 @@
             flex-shrink: 0;
             display: flex; align-items: center;
             padding: 10px 16px 0;
-            background: #fff;
-            border-bottom: 0.5px solid #e5e5ea;
+            background: #1a1a1a;
+            border-bottom: 0.5px solid #333;
         }
         #fretBackBtn {
             border: none; background: none;
-            font-size: 14px; color: #007aff;
+            font-size: 14px; color: #4da3ff;
             cursor: pointer; padding: 6px 10px 6px 0;
             font-weight: 500; white-space: nowrap;
         }
@@ -219,7 +219,7 @@
         #fretTopBar .fret-mode-bar::-webkit-scrollbar { display: none; }
 
         /* 控件区固定高度，不拉伸 */
-        .fret-controls { flex-shrink: 0; padding: 6px 12px; display: flex; flex-direction: column; gap: 6px; }
+        .fret-controls { flex-shrink: 0; padding: 6px 12px; display: flex; flex-direction: column; gap: 6px; background: #1a1a1a; }
         .fret-card-row { display: flex; gap: 8px; align-items: center; }
 
         /* 指板容器：占满剩余空间 */
@@ -243,24 +243,24 @@
         }
         .fret-mode-btn {
             padding: 7px 14px; border-radius: 20px;
-            border: 1.5px solid #e5e5ea; background: #fff;
-            font-size: 12px; font-weight: 600; color: #3c3c43; cursor: pointer;
+            border: 1.5px solid #333; background: #222;
+            font-size: 12px; font-weight: 600; color: #aaa; cursor: pointer;
             white-space: nowrap;
             transition: all .15s;
         }
         .fret-mode-btn.active {
-            background: #1c1c1e; color: #fff; border-color: #1c1c1e;
+            background: #fff; color: #111; border-color: #fff;
         }
         /* 题目/状态卡 */
         .fret-question-card {
-            background: #fff; border-radius: 10px;
+            background: #222; border-radius: 10px;
             padding: 8px 12px;
-            box-shadow: 0 1px 4px rgba(0,0,0,.08);
+            box-shadow: 0 1px 4px rgba(0,0,0,.4);
             font-size: 13px; line-height: 1.4;
-            flex: 1;
+            flex: 1; color: #ddd;
         }
-        .fret-question-card .q-title { font-weight: 600; margin-bottom: 2px; }
-        .fret-question-card .q-hint  { font-size: 11px; color: #8e8e93; }
+        .fret-question-card .q-title { font-weight: 600; margin-bottom: 2px; color: #fff; }
+        .fret-question-card .q-hint  { font-size: 11px; color: #666; }
         .fret-question-card .q-result { font-weight: 600; margin-top: 4px; font-size: 12px; }
         .fret-question-card .q-result.ok  { color: #34c759; }
         .fret-question-card .q-result.err { color: #ff3b30; }
@@ -272,8 +272,8 @@
             padding: 7px 14px; border-radius: 8px;
             border: none; font-size: 13px; font-weight: 600; cursor: pointer; white-space: nowrap;
         }
-        .fret-action-btn.primary { background: #1c1c1e; color: #fff; }
-        .fret-action-btn.secondary { background: #e5e5ea; color: #1c1c1e; }
+        .fret-action-btn.primary { background: #fff; color: #111; }
+        .fret-action-btn.secondary { background: #2a2a2a; color: #ccc; border: 1px solid #444; }
     </style>
 </head>
 <body>
@@ -1629,25 +1629,25 @@ function drawFretboard() {
 
     // ── 品格编号行（上方） ──
     ctx.font = '10px -apple-system, sans-serif';
-    ctx.fillStyle = '#8e8e93';
+    ctx.fillStyle = '#555';
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
     for (let f = 1; f <= FRET_COUNT; f++) {
         ctx.fillText(String(f), FB.fretCX(f), FB.numH / 2);
     }
 
-    // ── 指板底色（木纹渐变） ──
-    const grad = ctx.createLinearGradient(FB.nutW, 0, FB.totalW, 0);
-    grad.addColorStop(0,   '#6b4423');
-    grad.addColorStop(0.5, '#5c3d1e');
-    grad.addColorStop(1,   '#4a2f15');
+    // ── 指板底色（深色射线木） ──
+    const grad = ctx.createLinearGradient(FB.nutW, FB.boardTop, FB.nutW, FB.boardTop + 6 * FB.strH);
+    grad.addColorStop(0,   '#1a1a1a');
+    grad.addColorStop(0.5, '#141414');
+    grad.addColorStop(1,   '#0e0e0e');
     ctx.fillStyle = grad;
     ctx.beginPath();
     ctx.roundRect(FB.nutW, FB.boardTop, FB._boardW, 6 * FB.strH, [0, 4, 4, 0]);
     ctx.fill();
 
     // ── 弦名区（左侧，含空弦点击区） ──
-    ctx.fillStyle = '#3a2510';
+    ctx.fillStyle = '#111';
     ctx.fillRect(0, FB.boardTop, FB.nutW, 6 * FB.strH);
 
     // 枕（nut）竖线
@@ -1661,13 +1661,13 @@ function drawFretboard() {
 
     // ── 品格竖线（变宽） ──
     for (let f = 1; f <= FRET_COUNT; f++) {
-        const x = FB.nutW + FB._fretX[f-1] + FB._fretWidths[f-1]; // 右边界
+        const x = FB.nutW + FB._fretX[f-1] + FB._fretWidths[f-1];
         const lg = ctx.createLinearGradient(x - 1, 0, x + 2, 0);
-        lg.addColorStop(0, '#9a7010');
-        lg.addColorStop(0.4, '#f0d080');
-        lg.addColorStop(1, '#9a7010');
+        lg.addColorStop(0,   '#3a3a3a');
+        lg.addColorStop(0.4, '#888');
+        lg.addColorStop(1,   '#3a3a3a');
         ctx.strokeStyle = lg;
-        ctx.lineWidth = 2;
+        ctx.lineWidth = 1.5;
         ctx.beginPath();
         ctx.moveTo(x, FB.boardTop + 1);
         ctx.lineTo(x, FB.boardBot - 1);
@@ -1675,25 +1675,25 @@ function drawFretboard() {
     }
 
     // ── 弦线 ──
-    const stringThickness = [3.2, 2.6, 2.1, 1.5, 1.0, 0.7]; // 低E→高E
+    const stringThickness = [3.2, 2.6, 2.1, 1.5, 1.0, 0.7];
     for (let s = 0; s <= 5; s++) {
         const y = FB.strCY(s);
         const thick = stringThickness[s];
         const sg = ctx.createLinearGradient(0, y - thick, 0, y + thick);
-        sg.addColorStop(0, 'rgba(255,240,180,0.45)');
-        sg.addColorStop(0.4, 'rgba(220,200,140,0.92)');
-        sg.addColorStop(1, 'rgba(180,160,100,0.55)');
+        sg.addColorStop(0,   'rgba(255,255,255,0.15)');
+        sg.addColorStop(0.4, 'rgba(200,200,200,0.80)');
+        sg.addColorStop(1,   'rgba(120,120,120,0.40)');
         ctx.strokeStyle = sg;
         ctx.lineWidth = thick;
         ctx.beginPath();
-        ctx.moveTo(0, y);      // 从弦名区起始（含空弦）
+        ctx.moveTo(0, y);
         ctx.lineTo(FB.totalW, y);
         ctx.stroke();
     }
 
-    // ── 弦名（左侧，可点击触发空弦音） ──
+    // ── 弦名（左侧） ──
     ctx.font = 'bold 11px -apple-system, sans-serif';
-    ctx.fillStyle = '#ffe0a0';
+    ctx.fillStyle = '#aaa';
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
     const nameOrder = ['e','B','G','D','A','E']; // 从上到下（高E→低E）
@@ -1709,7 +1709,7 @@ function drawFretboard() {
     const MARKER_FRETS_SINGLE = [3, 5, 7, 9, 15];
     const MARKER_FRETS_DOUBLE = [12];
 
-    ctx.fillStyle = 'rgba(200,169,110,0.55)';
+    ctx.fillStyle = 'rgba(255,255,255,0.25)';
     for (const f of MARKER_FRETS_SINGLE) {
         if (f > FRET_COUNT) continue;
         ctx.beginPath();
