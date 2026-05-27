@@ -228,8 +228,6 @@
             min-height: 0;
             overflow: hidden;
             padding: 0 12px 8px;
-            display: flex;
-            align-items: flex-start;
         }
 
         #fretCanvas {
@@ -1591,11 +1589,15 @@ function initFBLayout() {
     }
     FB._boardW = x;
 
-    // 读取 .fretboard-wrap 的实际高度（CSS flex:1 已经分配好了）
-    const wrap = document.querySelector('.fretboard-wrap');
-    const wrapH = wrap ? wrap.clientHeight : window.innerHeight * 0.6;
+    // 计算可用高度：窗口高度 - 顶栏 - 控件区（不含 wrap 本身）
+    const topBar  = document.getElementById('fretTopBar');
+    const controls = document.querySelector('#fretboardView .fret-controls');
+    const topH = topBar    ? topBar.offsetHeight    : 50;
+    const ctrlH = controls ? controls.offsetHeight  : 80;
+    const wrapH = window.innerHeight - topH - ctrlH - 16; // 16 = padding bottom
+
     const calcStrH = Math.floor((wrapH - FB.numH - FB.dotH) / 6);
-    FB.strH = Math.max(28, Math.min(120, calcStrH));
+    FB.strH = Math.max(28, Math.min(160, calcStrH));
 }
 
 const DPR = window.devicePixelRatio || 1;
