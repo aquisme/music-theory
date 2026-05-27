@@ -1563,7 +1563,7 @@ const FB = {
     _fretX: [],       // 每品左边 x（从 nutW 开始）
     _boardW: 0,       // 指板宽度（不含弦名区）
     get totalW() { return this.nutW + this._boardW; },
-    get totalH() { return this.numH + 6 * this.strH + this.dotH; },
+    get totalH() { return this.numH + 6 * this.strH; },
     get boardTop() { return this.numH; },
     get boardBot() { return this.numH + 6 * this.strH; },
     get dotRowTop() { return this.numH + 6 * this.strH; },
@@ -1702,27 +1702,26 @@ function drawFretboard() {
         ctx.fillText(nameOrder[row], FB.nutW / 2, y);
     }
 
-    // ── 指板标记点行（下方） ──
-    ctx.fillStyle = '#2e1e0a';
-    ctx.fillRect(0, FB.dotRowTop, FB.totalW, FB.dotH);
+    // ── 指板标记点（画在指板垂直中央，弦3和弦4之间） ──
+    // 不再画单独的标记行，直接叠在指板上
+    const boardMidY = FB.boardTop + 3 * FB.strH; // 弦3底部 = 弦4顶部
 
     const MARKER_FRETS_SINGLE = [3, 5, 7, 9, 15];
     const MARKER_FRETS_DOUBLE = [12];
 
-    ctx.fillStyle = '#c8a96e';
+    ctx.fillStyle = 'rgba(200,169,110,0.55)';
     for (const f of MARKER_FRETS_SINGLE) {
         if (f > FRET_COUNT) continue;
         ctx.beginPath();
-        ctx.arc(FB.fretCX(f), FB.dotRowTop + FB.dotH / 2, FB.dotR, 0, Math.PI * 2);
+        ctx.arc(FB.fretCX(f), boardMidY, FB.dotR, 0, Math.PI * 2);
         ctx.fill();
     }
     for (const f of MARKER_FRETS_DOUBLE) {
         if (f > FRET_COUNT) continue;
         const cx = FB.fretCX(f);
-        const cy = FB.dotRowTop + FB.dotH / 2;
         const gap = FB.dotR * 1.4;
-        ctx.beginPath(); ctx.arc(cx - gap, cy, FB.dotR * 0.82, 0, Math.PI * 2); ctx.fill();
-        ctx.beginPath(); ctx.arc(cx + gap, cy, FB.dotR * 0.82, 0, Math.PI * 2); ctx.fill();
+        ctx.beginPath(); ctx.arc(cx - gap, boardMidY, FB.dotR * 0.82, 0, Math.PI * 2); ctx.fill();
+        ctx.beginPath(); ctx.arc(cx + gap, boardMidY, FB.dotR * 0.82, 0, Math.PI * 2); ctx.fill();
     }
 
     // ── 音名标注圆点 ──
