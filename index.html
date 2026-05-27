@@ -196,14 +196,13 @@
         #fretboardView.active { display: flex; }
         #chatView.hidden { display: none; }
 
-        /* 指板全屏内的顶栏（复用 header 样式） */
+        /* 指板全屏内的顶栏 */
         #fretTopBar {
             flex-shrink: 0;
             display: flex; align-items: center;
             padding: 10px 16px 0;
             background: #fff;
             border-bottom: 0.5px solid #e5e5ea;
-            gap: 0;
         }
         #fretBackBtn {
             border: none; background: none;
@@ -219,14 +218,20 @@
         }
         #fretTopBar .fret-mode-bar::-webkit-scrollbar { display: none; }
 
-        /* 指板容器 */
+        /* 控件区固定高度，不拉伸 */
+        .fret-controls { flex-shrink: 0; padding: 6px 12px; display: flex; flex-direction: column; gap: 6px; }
+        .fret-card-row { display: flex; gap: 8px; align-items: center; }
+
+        /* 指板容器：占满剩余空间 */
         .fretboard-wrap {
+            flex: 1 1 0;
+            min-height: 0;
             overflow: hidden;
-            padding: 0 12px;
-            flex: 1;
+            padding: 0 12px 8px;
             display: flex;
             align-items: flex-start;
         }
+
         #fretCanvas {
             display: block;
             border-radius: 10px;
@@ -235,22 +240,14 @@
             touch-action: manipulation;
         }
 
-        /* 指板控制面板 */
-        .fret-controls {
-            padding: 6px 12px; display: flex; flex-direction: column; gap: 6px;
-            flex-shrink: 0;
-        }
-        /* 题目卡 + 操作按钮横排 */
-        .fret-card-row {
-            display: flex; gap: 8px; align-items: center;
-        }
         .fret-mode-bar {
-            display: flex; gap: 6px; flex-wrap: wrap;
+            display: flex; gap: 6px; flex-wrap: nowrap;
         }
         .fret-mode-btn {
             padding: 7px 14px; border-radius: 20px;
             border: 1.5px solid #e5e5ea; background: #fff;
             font-size: 12px; font-weight: 600; color: #3c3c43; cursor: pointer;
+            white-space: nowrap;
             transition: all .15s;
         }
         .fret-mode-btn.active {
@@ -1582,7 +1579,6 @@ const FB = {
 };
 
 function initFBLayout() {
-    // 全屏模式下使用窗口宽度
     const availW = window.innerWidth - 24;
     FB._boardW = Math.max(availW - FB.nutW, 300);
     const relWidths = computeFretWidths(FRET_COUNT);
@@ -1595,14 +1591,11 @@ function initFBLayout() {
     }
     FB._boardW = x;
 
-    // 动态计算弦高：用控件区底部到窗口底部的距离
-    const controlsEl = document.querySelector('#fretboardView .fret-controls');
-    const controlsBottom = controlsEl
-        ? controlsEl.getBoundingClientRect().bottom
-        : (document.getElementById('fretTopBar')?.offsetHeight || 50) + 120;
-    const availH = window.innerHeight - controlsBottom - 8;
-    const calcStrH = Math.floor((availH - FB.numH - FB.dotH) / 6);
-    FB.strH = Math.max(28, Math.min(100, calcStrH));
+    // 读取 .fretboard-wrap 的实际高度（CSS flex:1 已经分配好了）
+    const wrap = document.querySelector('.fretboard-wrap');
+    const wrapH = wrap ? wrap.clientHeight : window.innerHeight * 0.6;
+    const calcStrH = Math.floor((wrapH - FB.numH - FB.dotH - 8) / 6);
+    FB.strH = Math.max(28, Math.min(120, calcStrH));
 }
 
 const DPR = window.devicePixelRatio || 1;
