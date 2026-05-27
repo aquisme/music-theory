@@ -1905,7 +1905,7 @@ function generateFretQuestion(mode) {
     if (mode === 'note') {
         // 认识音名：找出指板上前N品内的某个音
         const targetNote = CHROMATIC[Math.floor(Math.random() * 12)];
-        const maxFret = difficulty <= 2 ? 5 : difficulty <= 3 ? 9 : 12;
+        const maxFret = 12;
         // 找出所有目标格子
         const targets = [];
         for (let s = 0; s <= 5; s++)
@@ -1922,7 +1922,7 @@ function generateFretQuestion(mode) {
             done: false
         };
         card.innerHTML = `<div class="q-title">找出所有 <b>${targetNote}</b></div>
-            <div class="q-hint">点击前 ${maxFret} 品内所有 ${targetNote} 音的位置（共 ${targets.length} 个）</div>
+            <div class="q-hint">点击空弦和前 ${maxFret} 品内所有 ${targetNote} 音的位置（共 ${targets.length} 个）</div>
             <div class="q-result" id="fretResult"></div>`;
 
     } else if (mode === 'interval') {
