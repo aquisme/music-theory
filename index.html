@@ -1317,6 +1317,22 @@ function handleMidiMessage(event) {
     // note off 不处理
 }
 
+function disconnectMidi() {
+    if (midiAccess) {
+        midiAccess.inputs.forEach(input => { input.onmidimessage = null; });
+        midiAccess.onstatechange = null;
+    }
+    midiEnabled = false;
+    midiSequence = [];
+    midiCurrentFrame = [];
+    clearTimeout(midiSeqTimer);
+    clearTimeout(midiFrameTimer);
+    const btn = document.getElementById('midiBtn');
+    btn.classList.remove('connected', 'pressed');
+    btn.title = 'MIDI 键盘（点击连接）';
+    addMsg('🎹 MIDI 已断开', 'master');
+}
+
 async function initMidi() {
     if (!navigator.requestMIDIAccess) {
         addMsg('你的浏览器不支持 Web MIDI API，请使用 Chrome 或 Edge。', 'master');
@@ -1354,8 +1370,7 @@ window.addEventListener('load', () => {
         if (!midiEnabled) {
             initMidi();
         } else {
-            const count = midiAccess ? midiAccess.inputs.size : 0;
-            addMsg(`🎹 MIDI ${count > 0 ? `已连接 ${count} 个设备` : '已启用但无设备，请检查键盘连接'}`, 'master');
+            disconnectMidi();
         }
     });
 
